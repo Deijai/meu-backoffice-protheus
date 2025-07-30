@@ -36,8 +36,10 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
     const [loaded] = useFonts({
-        // Adicione fontes customizadas aqui se necessário
+        PoppinsRegular: require("../assets/fonts/Poppins-Regular.ttf"),
+        PoppinsBold: require("../assets/fonts/Poppins-Bold.ttf"),
     });
+
 
     useEffect(() => {
         if (loaded) {

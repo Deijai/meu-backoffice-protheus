@@ -1,14 +1,12 @@
-// app/(auth)/login.tsx - TOAST CORRIGIDO
+// app/(auth)/login.tsx - DESIGN RENOVADO COM LOGO
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ImageBackground, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { SafeArea } from '../../src/components/layout/SafeArea';
 import { Button } from '../../src/components/ui/Button';
-import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
-import { Toast } from '../../src/components/ui/Toast';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { useTheme } from '../../src/hooks/useTheme';
 import { authService } from '../../src/services/api/authService';
@@ -17,7 +15,6 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useConfigStore } from '../../src/store/configStore';
 import { useToastStore } from '../../src/store/toastStore';
 import { Colors } from '../../src/styles/colors';
-import { validation } from '../../src/utils/validation';
 
 export default function LoginScreen() {
     const { theme } = useTheme();
@@ -94,15 +91,13 @@ export default function LoginScreen() {
         const errors: Record<string, string> = {};
 
         // Validar username
-        const usernameValidation = validation.username(formData.username);
-        if (!usernameValidation.valid) {
-            errors.username = usernameValidation.errors[0];
+        if (!formData.username.trim()) {
+            errors.username = 'Nome de usuário é obrigatório';
         }
 
-        // Validar password
-        const passwordValidation = validation.password(formData.password);
-        if (!passwordValidation.valid) {
-            errors.password = passwordValidation.errors[0];
+        // Validar password  
+        if (!formData.password.trim()) {
+            errors.password = 'Senha é obrigatória';
         }
 
         setValidationErrors(errors);
@@ -187,7 +182,7 @@ export default function LoginScreen() {
 
             // Aguardar para mostrar sucesso
             setTimeout(() => {
-                router.replace('/(app)/branch-selection');
+                router.navigate('/(app)/branch-selection');
             }, 1500);
 
         } catch (error: any) {
@@ -246,7 +241,7 @@ export default function LoginScreen() {
             console.log('✅ Auto login bem-sucedido');
 
             setTimeout(() => {
-                router.replace('/(app)/branch-selection');
+                router.navigate('/(app)/branch-selection');
             }, 1000);
 
         } catch (error: any) {
@@ -267,12 +262,12 @@ export default function LoginScreen() {
 
     const handleBiometricLogin = async () => {
         if (!biometricAvailable || !isEnrolled) {
-            Alert.alert('Biometria Indisponível', 'Autenticação biométrica não está configurada neste dispositivo.');
+            showError('❌ Autenticação biométrica não disponível');
             return;
         }
 
         if (!autoLoginUser) {
-            Alert.alert('Erro', 'Nenhum usuário salvo para autenticação biométrica.');
+            showError('❌ Nenhum usuário salvo para autenticação biométrica');
             return;
         }
 
@@ -306,296 +301,341 @@ export default function LoginScreen() {
 
     return (
         <SafeArea>
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                {/* Loading Overlay */}
-                {isLoading && (
-                    <LoadingSpinner
-                        overlay
-                        text="Autenticando..."
-                        transparent
-                    />
-                )}
+            <ImageBackground
+                source={require('../../assets/images/background.png')}
+                style={[styles.backgroundImage]}
+                resizeMode="cover"
+            >
+                {/* Overlay para melhor legibilidade */}
+                <View style={[
+                    styles.overlay,
+                    {
+                        // backgroundColor: theme.colors.background === '#ffffff'
+                        //     ? 'rgba(255, 255, 255, 0.85)'
+                        //     : 'rgba(26, 32, 44, 0.85)'
+                        backgroundColor: 'transparent'
+                    }
+                ]} />
 
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity
-                        onPress={() => router.back()}
-                        style={[styles.backButton, { backgroundColor: theme.colors.surface }]}
-                    >
-                        <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-                    </TouchableOpacity>
-
-                    <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
-                        <Ionicons name="person-outline" size={24} color="#ffffff" />
-                    </View>
-                </View>
-
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    <Text style={[styles.title, { color: theme.colors.text }]}>
-                        Bem-vindo de volta
-                    </Text>
-                    <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-                        Faça login no Meu Backoffice Protheus
-                    </Text>
-
-                    {/* Auto Login Card */}
-                    {showAutoLoginOptions && autoLoginUser && (
-                        <Card variant="elevated" style={[styles.autoLoginCard, { backgroundColor: `${Colors.primary}15` }]}>
-                            <View style={styles.autoLoginContent}>
-                                <View style={[styles.autoLoginIcon, { backgroundColor: Colors.primary }]}>
-                                    <Ionicons name="person" size={20} color="#ffffff" />
-                                </View>
-                                <View style={styles.autoLoginInfo}>
-                                    <Text style={[styles.autoLoginTitle, { color: theme.colors.text }]}>
-                                        Login Rápido
-                                    </Text>
-                                    <Text style={[styles.autoLoginSubtitle, { color: theme.colors.textSecondary }]}>
-                                        {autoLoginUser.username}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {biometricAvailable && isEnrolled && (
-                                <Button
-                                    title={`Usar ${getBiometricTypeName()}`}
-                                    variant="outline"
-                                    size="sm"
-                                    onPress={handleBiometricLogin}
-                                    leftIcon={<Ionicons name="finger-print" size={16} color={Colors.primary} />}
-                                    style={styles.biometricButton}
-                                />
-                            )}
-                        </Card>
+                <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+                    {/* Loading Overlay */}
+                    {isLoading && (
+                        <LoadingSpinner
+                            overlay
+                            text="Autenticando..."
+                            transparent
+                        />
                     )}
 
-                    {/* Login Form */}
-                    <Card variant="outlined" style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            Credenciais de Acesso
-                        </Text>
-
-                        <Input
-                            label="Nome de usuário"
-                            value={formData.username}
-                            onChangeText={(value) => updateFormData('username', value)}
-                            placeholder="Digite seu usuário"
-                            leftIcon="person-outline"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            error={validationErrors.username}
-                            required
-                        />
-
-                        <Input
-                            label="Senha"
-                            value={formData.password}
-                            onChangeText={(value) => updateFormData('password', value)}
-                            placeholder="Digite sua senha"
-                            leftIcon="lock-closed-outline"
-                            secureTextEntry
-                            error={validationErrors.password}
-                            required
-                        />
-                    </Card>
-
-                    {/* Login Options */}
-                    <Card variant="outlined" style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            Opções de Segurança
-                        </Text>
-
-                        <View style={styles.optionItem}>
-                            <View style={styles.optionLeft}>
-                                <Ionicons name="save-outline" size={20} color={Colors.primary} />
-                                <View>
-                                    <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
-                                        Salvar credenciais
-                                    </Text>
-                                    <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
-                                        Manter logado neste dispositivo
-                                    </Text>
-                                </View>
+                    <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                        {/* Header/Logo */}
+                        <View style={styles.header}>
+                            <View style={[styles.logoContainer]}>
+                                <Image
+                                    source={require('../../assets/images/meu-protheus.png')}
+                                    style={styles.logoImage}
+                                    resizeMode="contain"
+                                />
                             </View>
-                            <Switch
-                                value={options.savePassword}
-                                onValueChange={(value) => setOptions(prev => ({ ...prev, savePassword: value }))}
-                                trackColor={{ false: theme.colors.border, true: Colors.primary }}
-                                thumbColor="#ffffff"
-                            />
+                            <Text style={[styles.appTitle, { color: theme.colors.text }]}>
+                                Meu Backoffice
+                            </Text>
+                            <Text style={[styles.appSubtitle, { color: theme.colors.textSecondary }]}>
+                                Protheus
+                            </Text>
                         </View>
 
-                        {biometricAvailable && isEnrolled && (
-                            <View style={styles.optionItem}>
-                                <View style={styles.optionLeft}>
-                                    <Ionicons name="finger-print-outline" size={20} color={Colors.primary} />
-                                    <View>
-                                        <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
-                                            {getBiometricTypeName()}
+                        {/* Welcome Message */}
+                        {/* <View style={styles.welcomeSection}>
+                            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>
+                                Bem-vindo de volta
+                            </Text>
+                            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textSecondary }]}>
+                                Entre com suas credenciais para continuar
+                            </Text>
+                        </View> */}
+
+                        {/* Auto Login Card */}
+                        {showAutoLoginOptions && autoLoginUser && (
+                            <View style={[
+                                styles.autoLoginCard,
+                                {
+                                    backgroundColor: theme.colors.background === '#ffffff'
+                                        ? 'rgba(255, 255, 255, 0.95)'
+                                        : 'rgba(45, 55, 72, 0.95)'
+                                }
+                            ]}>
+                                <View style={styles.autoLoginHeader}>
+                                    <View style={[styles.autoLoginAvatar, { backgroundColor: Colors.primary }]}>
+                                        <Text style={styles.autoLoginAvatarText}>
+                                            {autoLoginUser.username.charAt(0).toUpperCase()}
                                         </Text>
-                                        <Text style={[styles.optionDescription, { color: theme.colors.textSecondary }]}>
-                                            Login rápido e seguro
+                                    </View>
+                                    <View style={styles.autoLoginInfo}>
+                                        <Text style={[styles.autoLoginName, { color: theme.colors.text }]}>
+                                            {autoLoginUser.username}
+                                        </Text>
+                                        <Text style={[styles.autoLoginStatus, { color: Colors.primary }]}>
+                                            🔐 Login salvo
                                         </Text>
                                     </View>
                                 </View>
-                                <Switch
-                                    value={options.enableBiometric}
-                                    onValueChange={(value) => setOptions(prev => ({ ...prev, enableBiometric: value }))}
-                                    trackColor={{ false: theme.colors.border, true: Colors.primary }}
-                                    thumbColor="#ffffff"
-                                />
+
+                                {biometricAvailable && isEnrolled && (
+                                    <Button
+                                        title={`Entrar com ${getBiometricTypeName()}`}
+                                        variant="outline"
+                                        size="sm"
+                                        onPress={handleBiometricLogin}
+                                        leftIcon={<Ionicons name="finger-print" size={18} color={Colors.primary} />}
+                                        style={styles.biometricButton}
+                                    />
+                                )}
                             </View>
                         )}
-                    </Card>
 
-                    {/* Actions */}
-                    <View style={styles.actions}>
-                        <Button
-                            title="Entrar"
-                            onPress={handleLogin}
-                            disabled={!isFormValid() || isLoading}
-                            leftIcon={<Ionicons name="log-in-outline" size={20} color="#ffffff" />}
-                            style={styles.loginButton}
-                        />
-                    </View>
-
-                    {/* Footer */}
-                    <View style={styles.footer}>
-                        <TouchableOpacity
-                            onPress={() => {
-                                Alert.alert(
-                                    'Esqueceu sua senha?',
-                                    'Entre em contato com o administrador do sistema para recuperar sua senha.',
-                                    [{ text: 'OK' }]
-                                );
-                            }}
-                        >
-                            <Text style={[styles.linkText, { color: Colors.primary }]}>
-                                Esqueceu sua senha?
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            onPress={() => router.push('/(auth)/setup')}
-                        >
-                            <Text style={[styles.linkText, { color: Colors.primary }]}>
-                                Configurar servidor
-                            </Text>
-                        </TouchableOpacity>
-
-                        {__DEV__ && (
-                            <Button
-                                title="🔬 Ultra Debug"
-                                variant="ghost"
-                                onPress={() => router.push('/(auth)/ultra-debug')}
-                                style={{ marginTop: 20 }}
+                        {/* Login Form */}
+                        <View style={styles.formSection}>
+                            <Input
+                                value={formData.username}
+                                onChangeText={(value) => updateFormData('username', value)}
+                                placeholder="Nome de usuário"
+                                leftIcon="person-outline"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                error={validationErrors.username}
+                                style={styles.input}
                             />
+
+                            <Input
+                                value={formData.password}
+                                onChangeText={(value) => updateFormData('password', value)}
+                                placeholder="Senha"
+                                leftIcon="lock-closed-outline"
+                                secureTextEntry
+                                error={validationErrors.password}
+                                style={styles.input}
+                            />
+                        </View>
+
+                        {/* Options */}
+                        <View style={styles.optionsSection}>
+                            <View style={styles.optionRow}>
+                                <View style={styles.optionLeft}>
+                                    <Ionicons name="save-outline" size={20} color={theme.colors.textSecondary} />
+                                    <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
+                                        Manter conectado
+                                    </Text>
+                                </View>
+                                <Switch
+                                    value={options.savePassword}
+                                    onValueChange={(value) => setOptions(prev => ({ ...prev, savePassword: value }))}
+                                    trackColor={{ false: theme.colors.border, true: `${Colors.primary}80` }}
+                                    thumbColor={options.savePassword ? Colors.primary : theme.colors.surface}
+                                />
+                            </View>
+
+                            {biometricAvailable && isEnrolled && (
+                                <View style={styles.optionRow}>
+                                    <View style={styles.optionLeft}>
+                                        <Ionicons name="finger-print-outline" size={20} color={theme.colors.textSecondary} />
+                                        <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
+                                            Habilitar {getBiometricTypeName()}
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={options.enableBiometric}
+                                        onValueChange={(value) => setOptions(prev => ({ ...prev, enableBiometric: value }))}
+                                        trackColor={{ false: theme.colors.border, true: `${Colors.primary}80` }}
+                                        thumbColor={options.enableBiometric ? Colors.primary : theme.colors.surface}
+                                    />
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Login Button */}
+                        <View style={styles.loginSection}>
+                            <Button
+                                title="Entrar"
+                                onPress={handleLogin}
+                                disabled={!isFormValid() || isLoading}
+                                style={styles.loginButton}
+                            />
+                        </View>
+
+                        {/* Debug Button (only in dev) */}
+                        {__DEV__ && (
+                            <View style={styles.debugSection}>
+                                <TouchableOpacity
+                                    onPress={() => router.push('/(auth)/ultra-debug')}
+                                    style={styles.debugButton}
+                                >
+                                    <Ionicons name="bug-outline" size={16} color={theme.colors.textSecondary} />
+                                    <Text style={[styles.debugText, { color: theme.colors.textSecondary }]}>
+                                        Debug Mode
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         )}
 
-                        <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
-                            Meu Backoffice Protheus v1.0.0
-                        </Text>
-                    </View>
-                </ScrollView>
-
-                {/* Toast */}
-                <Toast
-                    visible={visible}
-                    message={message}
-                    type={type}
-                    onHide={hideToast}
-                />
-            </View>
+                        {/* Footer */}
+                        <View style={styles.footer}>
+                            <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
+                                Meu Backoffice Protheus v1.0.0
+                            </Text>
+                        </View>
+                    </ScrollView>
+                </View>
+            </ImageBackground>
         </SafeArea>
     );
 }
 
 const styles = StyleSheet.create({
+    backgroundImage: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
+    },
+    overlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1,
+    },
     container: {
         flex: 1,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 16,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 16,
-    },
-    iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
+        zIndex: 2,
     },
     content: {
         flex: 1,
-        paddingHorizontal: 24,
     },
-    title: {
+    scrollContent: {
+        flexGrow: 1,
+        paddingHorizontal: 24,
+        justifyContent: 'center',
+        minHeight: '100%',
+    },
+
+    // Header/Logo Section
+    header: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    logoContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        // marginBottom: 16,
+        // shadowColor: Colors.primary,
+        // shadowOffset: { width: 0, height: 4 },
+        // shadowOpacity: 0.3,
+        // shadowRadius: 8,
+        // elevation: 8,
+    },
+    logoImage: {
+        width: 60,
+        height: 60,
+        //tintColor: '#ffffff', // Deixa a imagem branca para contrastar com o fundo
+    },
+    appTitle: {
         fontSize: 24,
         fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 8,
+        marginBottom: 4,
     },
-    subtitle: {
+    appSubtitle: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+
+    // Welcome Section
+    welcomeSection: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    welcomeTitle: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    welcomeSubtitle: {
         fontSize: 16,
         textAlign: 'center',
-        marginBottom: 24,
+        lineHeight: 22,
     },
+
+    // Auto Login Card
     autoLoginCard: {
-        padding: 16,
-        marginBottom: 16,
+        padding: 20,
+        marginBottom: 24,
+        borderRadius: 16,
         borderLeftWidth: 4,
         borderLeftColor: Colors.primary,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
     },
-    autoLoginContent: {
+    autoLoginHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 16,
     },
-    autoLoginIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+    autoLoginAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 12,
     },
+    autoLoginAvatarText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#ffffff',
+    },
     autoLoginInfo: {
         flex: 1,
     },
-    autoLoginTitle: {
+    autoLoginName: {
         fontSize: 16,
         fontWeight: '600',
-        marginBottom: 2,
+        marginBottom: 4,
     },
-    autoLoginSubtitle: {
+    autoLoginStatus: {
         fontSize: 14,
+        fontWeight: '500',
     },
     biometricButton: {
         alignSelf: 'flex-start',
     },
-    section: {
-        padding: 16,
-        marginBottom: 16,
+
+    // Form Section
+    formSection: {
+        marginBottom: 24,
+        gap: 16,
     },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        marginBottom: 16,
+    input: {
+        backgroundColor: 'transparent',
     },
-    optionItem: {
+
+    // Options Section
+    optionsSection: {
+        marginBottom: 32,
+        gap: 16,
+    },
+    optionRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingVertical: 12,
+        paddingHorizontal: 4,
     },
     optionLeft: {
         flexDirection: 'row',
@@ -606,30 +646,48 @@ const styles = StyleSheet.create({
     optionLabel: {
         fontSize: 16,
         fontWeight: '500',
-        marginBottom: 2,
     },
-    optionDescription: {
-        fontSize: 13,
-        lineHeight: 18,
-    },
-    actions: {
+
+    // Login Section
+    loginSection: {
         marginBottom: 24,
     },
     loginButton: {
         height: 56,
+        borderRadius: 16,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
     },
+
+    // Debug Section
+    debugSection: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    debugButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+    },
+    debugText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+
+    // Footer
     footer: {
         alignItems: 'center',
-        gap: 16,
-        paddingVertical: 24,
-    },
-    linkText: {
-        fontSize: 16,
-        fontWeight: '600',
-        textDecorationLine: 'underline',
+        paddingTop: 24,
+        paddingBottom: 32,
     },
     footerText: {
-        fontSize: 14,
+        fontSize: 13,
         textAlign: 'center',
+        fontWeight: '500',
     },
 });

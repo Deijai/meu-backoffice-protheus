@@ -15,7 +15,6 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
-import { Toast } from '../../src/components/ui/Toast';
 import { useBranches } from '../../src/hooks/useBranches';
 import { useAuthStore } from '../../src/store/authStore';
 import { useThemeStore } from '../../src/store/themeStore';
@@ -283,12 +282,12 @@ export default function BranchSelectionScreen() {
                 </View>
 
                 {/* Toast */}
-                <Toast
+                {/* <Toast
                     visible={visible}
                     message={message}
                     type={type}
                     onHide={hideToast}
-                />
+                /> */}
             </View>
         </SafeArea>
     );

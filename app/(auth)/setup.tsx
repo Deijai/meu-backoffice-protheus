@@ -7,7 +7,6 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Modal } from '../../src/components/ui/Modal';
-import { Toast } from '../../src/components/ui/Toast';
 import { useRestValidation } from '../../src/hooks/useRestValidation';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useToastStore } from '../../src/store/toastStore';
@@ -351,12 +350,12 @@ export default function SetupScreen() {
                 </Modal>
 
                 {/* Toast */}
-                <Toast
+                {/* <Toast
                     visible={visible}
                     message={message}
                     type={type}
                     onHide={hideToast}
-                />
+                /> */}
             </View>
         </SafeArea>
     );
