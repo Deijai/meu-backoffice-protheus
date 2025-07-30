@@ -4,27 +4,38 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeArea } from '../../src/components/layout/SafeArea';
 import { useAuthStore } from '../../src/store/authStore';
 import { useConfigStore } from '../../src/store/configStore';
-import { useThemeStore } from '../../src/store/themeStore';
 import { Colors } from '../../src/styles/colors';
 
 export default function SplashScreen() {
-    const { theme } = useThemeStore();
-    const { isFirstLaunch, onboardingCompleted } = useConfigStore();
-    const { isAuthenticated } = useAuthStore();
+    const { isFirstLaunch, onboardingCompleted, canProceedToLogin } = useConfigStore();
+    const { isAuthenticated, selectedBranch, selectedModule } = useAuthStore();
 
     useEffect(() => {
         const timer = setTimeout(() => {
+            // Fluxo de navegação seguindo as regras
             if (isFirstLaunch || !onboardingCompleted) {
+                // Se é primeira vez, vai para onboarding
                 router.replace('/(auth)/onboarding');
+            } else if (!canProceedToLogin()) {
+                // Se REST não está configurado, vai para setup
+                router.replace('/(auth)/setup');
             } else if (!isAuthenticated) {
+                // Se REST OK mas não está logado, vai para login
                 router.replace('/(auth)/login');
+            } else if (!selectedBranch) {
+                // Se logado mas sem filial, vai para seleção de filial
+                router.replace('/(app)/branch-selection');
+            } else if (!selectedModule) {
+                // Se tem filial mas sem módulo, vai para seleção de módulo
+                router.replace('/(app)/module-selection');
             } else {
+                // Tudo configurado, vai para a página principal
                 router.replace('/(app)/(tabs)/home');
             }
         }, 2500);
 
         return () => clearTimeout(timer);
-    }, [isFirstLaunch, onboardingCompleted, isAuthenticated]);
+    }, [isFirstLaunch, onboardingCompleted, canProceedToLogin, isAuthenticated, selectedBranch, selectedModule]);
 
     return (
         <SafeArea>
