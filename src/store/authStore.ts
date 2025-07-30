@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { AppBranch } from '../types/protheus';
 
 interface User {
     id: string;
@@ -35,7 +36,7 @@ interface AuthState {
     // Actions
     login: (user: User) => void;
     logout: () => void;
-    setBranch: (branch: Branch) => void;
+    setBranch: (branch: AppBranch) => void;
     setModule: (module: Module) => void;
     setBiometricEnabled: (enabled: boolean) => void;
 }

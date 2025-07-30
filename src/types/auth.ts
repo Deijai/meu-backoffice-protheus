@@ -1,3 +1,4 @@
+// src/types/auth.ts - ATUALIZADO para usar Branch do Protheus
 export interface User {
     id: string;
     username: string;
@@ -6,6 +7,7 @@ export interface User {
     avatar?: string;
 }
 
+// Branch agora segue o padrão do Protheus (compatível com AppBranch)
 export interface Branch {
     id: string;
     code: string;
