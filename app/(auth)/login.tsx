@@ -9,12 +9,21 @@ import { Input } from '../../src/components/ui/Input';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useBiometric } from '../../src/hooks/useBiometric';
 import { useTheme } from '../../src/hooks/useTheme';
+import { authService } from '../../src/services/api/authService';
 import { useAppStore } from '../../src/store/appStore';
 import { Colors } from '../../src/styles/colors';
 
 export default function LoginScreen() {
     const { theme } = useTheme();
-    const { login, biometricLogin, enableBiometric, biometricEnabled, biometricAvailable, isLoggingIn } = useAuth();
+    const {
+        login,
+        biometricLogin,
+        enableBiometric,
+        biometricEnabled,
+        biometricAvailable,
+        isLoggingIn,
+        //checkAutoLogin
+    } = useAuth();
     const { getBiometricTypeName } = useBiometric();
     const { error } = useAppStore();
 
@@ -28,28 +37,58 @@ export default function LoginScreen() {
         enableBiometric: biometricEnabled,
     });
 
-    const [validations, setValidations] = useState({
-        hasMinLength: false,
-        hasUpperCase: false,
-        hasLowerCase: false,
-        hasSpecialChar: false,
-        hasNumber: false,
-    });
+    const [hiddenInput, setHiddenInput] = useState(false);
+    const [canAutoLogin, setCanAutoLogin] = useState(false);
 
     useEffect(() => {
         setOptions(prev => ({ ...prev, enableBiometric: biometricEnabled }));
     }, [biometricEnabled]);
 
     useEffect(() => {
-        const password = formData.password;
-        setValidations({
-            hasMinLength: password.length >= 6,
-            hasUpperCase: /[A-Z]/.test(password),
-            hasLowerCase: /[a-z]/.test(password),
-            hasSpecialChar: /[!@#$%^&*(),.?":{}|<>]/.test(password),
-            hasNumber: /\d/.test(password),
-        });
-    }, [formData.password]);
+        // Verifica se há usuário para auto login
+        checkUserForAutoLogin();
+    }, []);
+
+    // Monitora mudanças no username para resetar campos se necessário
+    useEffect(() => {
+        if (options.enableBiometric || options.savePassword) {
+            const storedUser = formData.username;
+            // Se mudou o usuário, reseta as opções
+            if (storedUser && formData.username !== storedUser) {
+                setHiddenInput(false);
+                setOptions({
+                    savePassword: false,
+                    enableBiometric: false,
+                });
+                setFormData(prev => ({ ...prev, password: '' }));
+            }
+        }
+    }, [formData.username]);
+
+    const checkUserForAutoLogin = async () => {
+        try {
+            const autoUser = await authService.checkAutoLogin();
+
+            if (autoUser) {
+                setFormData({
+                    username: autoUser.username,
+                    password: autoUser.password || '',
+                });
+
+                setOptions({
+                    savePassword: autoUser.keepConnected,
+                    enableBiometric: biometricEnabled,
+                });
+
+                if (autoUser.keepConnected && autoUser.password) {
+                    setHiddenInput(true);
+                    setCanAutoLogin(true);
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao verificar auto login:', error);
+        }
+    };
 
     const handleLogin = async () => {
         if (!formData.username.trim()) {
@@ -62,7 +101,11 @@ export default function LoginScreen() {
             return;
         }
 
-        const success = await login(formData);
+        const success = await login({
+            username: formData.username,
+            password: formData.password,
+            //keepConnected: options.savePassword,
+        });
 
         if (success) {
             if (options.enableBiometric && !biometricEnabled && biometricAvailable) {
@@ -89,30 +132,40 @@ export default function LoginScreen() {
         }
     };
 
+    const handleAutoLogin = async () => {
+        if (canAutoLogin) {
+            setCanAutoLogin(false);
+            await handleLogin();
+        }
+    };
+
     const updateFormData = (field: keyof typeof formData, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const ValidationItem = ({ isValid, text }: { isValid: boolean; text: string }) => (
-        <View style={styles.validationItem}>
-            <Ionicons
-                name={isValid ? "checkmark-circle" : "ellipse-outline"}
-                size={16}
-                color={isValid ? "#38a169" : theme.colors.border}
-            />
-            <Text style={[
-                styles.validationText,
-                {
-                    color: isValid ? "#38a169" : theme.colors.textSecondary,
-                    fontWeight: isValid ? '500' : '400'
-                }
-            ]}>
-                {text}
-            </Text>
-        </View>
-    );
+    const handleSavePasswordChange = (value: boolean) => {
+        setOptions(prev => ({ ...prev, savePassword: value }));
+        if (!value) {
+            setHiddenInput(false);
+        }
+    };
+
+    const handleBiometricChange = (value: boolean) => {
+        setOptions(prev => ({ ...prev, enableBiometric: value }));
+    };
 
     const isFormValid = formData.username.trim() && formData.password.trim();
+
+    // Auto login se disponível
+    useEffect(() => {
+        if (canAutoLogin) {
+            const timer = setTimeout(() => {
+                handleAutoLogin();
+            }, 1000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [canAutoLogin]);
 
     return (
         <SafeArea>
@@ -146,48 +199,19 @@ export default function LoginScreen() {
                             leftIcon="person-outline"
                             autoCapitalize="none"
                             autoCorrect={false}
-                        //required
+                            required
                         />
 
-                        <Input
-                            label="Senha"
-                            value={formData.password}
-                            onChangeText={(value) => updateFormData('password', value)}
-                            placeholder="Digite sua senha"
-                            leftIcon="lock-closed-outline"
-                            secureTextEntry
-                        //required
-                        />
-
-                        {/* Password Validations */}
-                        {formData.password.length > 0 && (
-                            <Card variant="outlined" style={styles.validationsCard}>
-                                <Text style={[styles.validationsTitle, { color: theme.colors.text }]}>
-                                    Requisitos da senha:
-                                </Text>
-                                <View style={styles.validationsList}>
-                                    <ValidationItem
-                                        isValid={validations.hasMinLength}
-                                        text="Conter no mínimo 6 caracteres"
-                                    />
-                                    <ValidationItem
-                                        isValid={validations.hasUpperCase}
-                                        text="Conter uma letra maiúscula"
-                                    />
-                                    <ValidationItem
-                                        isValid={validations.hasLowerCase}
-                                        text="Conter uma letra minúscula"
-                                    />
-                                    <ValidationItem
-                                        isValid={validations.hasSpecialChar}
-                                        text="Conter um caractere especial"
-                                    />
-                                    <ValidationItem
-                                        isValid={validations.hasNumber}
-                                        text="Conter um número"
-                                    />
-                                </View>
-                            </Card>
+                        {!hiddenInput && (
+                            <Input
+                                label="Senha"
+                                value={formData.password}
+                                onChangeText={(value) => updateFormData('password', value)}
+                                placeholder="Digite sua senha"
+                                leftIcon="lock-closed-outline"
+                                secureTextEntry
+                                required
+                            />
                         )}
                     </Card>
 
@@ -206,9 +230,10 @@ export default function LoginScreen() {
                             </View>
                             <Switch
                                 value={options.savePassword}
-                                onValueChange={(value) => setOptions(prev => ({ ...prev, savePassword: value }))}
+                                onValueChange={handleSavePasswordChange}
                                 trackColor={{ false: theme.colors.border, true: Colors.primary }}
                                 thumbColor="#ffffff"
+                                disabled={options.enableBiometric}
                             />
                         </View>
 
@@ -222,7 +247,7 @@ export default function LoginScreen() {
                                 </View>
                                 <Switch
                                     value={options.enableBiometric}
-                                    onValueChange={(value) => setOptions(prev => ({ ...prev, enableBiometric: value }))}
+                                    onValueChange={handleBiometricChange}
                                     trackColor={{ false: theme.colors.border, true: Colors.primary }}
                                     thumbColor="#ffffff"
                                 />
@@ -253,7 +278,7 @@ export default function LoginScreen() {
                             style={styles.loginButton}
                         />
 
-                        {biometricEnabled && biometricAvailable && (
+                        {biometricEnabled && biometricAvailable && !canAutoLogin && (
                             <>
                                 <View style={styles.divider}>
                                     <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
