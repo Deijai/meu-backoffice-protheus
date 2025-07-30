@@ -1,4 +1,4 @@
-// src/services/api/authService.ts - VERSÃO OAUTH2 PROTHEUS COM AXIOS
+// src/services/api/authService.ts - CORREÇÃO STATUS 201
 import axios from 'axios';
 import { useConfigStore } from '../../store/configStore';
 import { asyncStorageService } from '../storage/asyncStorage';
@@ -23,6 +23,7 @@ export interface AuthUser {
     token_type: string;
     expires_in: number;
     tokenExpiresAt: string;
+    password?: string; // Para auto login
 }
 
 export interface OAuth2Response {
@@ -47,7 +48,7 @@ export class AuthService {
     }
 
     /**
-     * LOGIN PRINCIPAL usando OAuth2 do Protheus com axios
+     * LOGIN PRINCIPAL - ACEITA STATUS 200 E 201
      */
     async signIn(credentials: LoginCredentials): Promise<AuthUser> {
         const { connection } = useConfigStore.getState();
@@ -56,14 +57,17 @@ export class AuthService {
             throw new Error('❌ Configuração REST não encontrada');
         }
 
-        console.log('🔄 === LOGIN OAUTH2 PROTHEUS INICIADO ===');
+        console.log('🔄 === LOGIN OAUTH2 INICIADO (VERSÃO CORRIGIDA) ===');
         console.log('👤 Usuário:', credentials.username);
+        console.log('🔒 Senha:', credentials.password.replace(/./g, '*'));
         console.log('🌐 URL Base:', connection.baseUrl);
 
         const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
-        console.log('🔐 URL OAuth:', oauthUrl);
+        console.log('🔐 URL OAuth COMPLETA:', oauthUrl);
 
         try {
+            console.log('📤 ENVIANDO REQUISIÇÃO...');
+
             const response = await axios.post(oauthUrl, {}, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -71,67 +75,118 @@ export class AuthService {
                     'password': credentials.password,
                 },
                 timeout: 15000,
-                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
+                validateStatus: (status) => {
+                    console.log(`📡 STATUS RECEBIDO: ${status}`);
+                    return status < 500; // Aceitar qualquer status < 500
+                },
             });
 
-            console.log('📡 Status da resposta:', response.status);
+            console.log('📊 === RESPOSTA COMPLETA DO SERVIDOR ===');
+            console.log('📡 Status:', response.status);
+            console.log('📄 Data COMPLETA:', JSON.stringify(response.data, null, 2));
 
-            if (response.status !== 200) {
-                if (response.status === 401) {
-                    console.log('❌ Credenciais rejeitadas pelo servidor');
-                    throw new Error('❌ Usuário ou senha incorretos');
-                } else if (response.status === 400) {
-                    console.log('❌ Requisição inválida');
-                    throw new Error('❌ Dados de login inválidos');
+            // VALIDAÇÃO CORRIGIDA - ACEITA 200 E 201
+            if (response.status === 200 || response.status === 201) {
+                console.log(`✅ Status ${response.status} - Analisando dados...`);
+
+                if (response.data?.access_token) {
+                    console.log('🔑 TOKEN ENCONTRADO - Login VÁLIDO');
+                    console.log('🔑 Token Type:', response.data.token_type);
+                    console.log('⏰ Expires In:', response.data.expires_in);
+                    console.log('🔄 Refresh Token:', !!response.data.refresh_token);
+                    console.log('🔒 Scope:', response.data.scope);
+                    console.log('🛡️ MFA:', response.data.hasMFA);
+
+                    // CRIAR USUÁRIO AUTENTICADO
+                    const tokenExpiresAt = new Date(Date.now() + (response.data.expires_in * 1000)).toISOString();
+
+                    const authUser: AuthUser = {
+                        username: credentials.username,
+                        keepConnected: credentials.keepConnected || false,
+                        lastLogin: new Date().toISOString(),
+                        authType: AuthType.OAUTH2,
+                        access_token: response.data.access_token,
+                        refresh_token: response.data.refresh_token,
+                        token_type: response.data.token_type,
+                        expires_in: response.data.expires_in,
+                        tokenExpiresAt,
+                        // Salvar senha para auto login se keepConnected
+                        password: credentials.keepConnected ? credentials.password : undefined,
+                    };
+
+                    await this.saveAuthenticatedUser(authUser);
+                    console.log('✅ LOGIN CONCLUÍDO COM SUCESSO');
+                    return authUser;
+
                 } else {
-                    console.log('❌ Erro no servidor:', response.status);
-                    throw new Error(`❌ Erro no servidor: ${response.status}`);
+                    console.log(`❌ Status ${response.status} mas SEM TOKEN - Possível erro do servidor`);
+                    console.log('📄 Dados recebidos:', response.data);
+                    throw new Error(`❌ Servidor retornou status ${response.status} mas sem token de acesso`);
+                }
+
+            } else if (response.status === 401) {
+                console.log('❌ Status 401 - CREDENCIAIS REJEITADAS pelo servidor');
+                console.log('📄 Dados do erro:', response.data);
+                throw new Error('❌ Usuário ou senha incorretos');
+
+            } else if (response.status === 400) {
+                console.log('❌ Status 400 - REQUISIÇÃO INVÁLIDA');
+                console.log('📄 Dados do erro:', response.data);
+                throw new Error('❌ Dados de login inválidos');
+
+            } else {
+                console.log(`❌ Status inesperado: ${response.status}`);
+                console.log('📄 Dados:', response.data);
+
+                // SE TEM TOKEN, ACEITAR MESMO COM STATUS DIFERENTE
+                if (response.data?.access_token) {
+                    console.log('🔧 Status diferente mas TEM TOKEN - Aceitando login...');
+
+                    const tokenExpiresAt = new Date(Date.now() + (response.data.expires_in * 1000)).toISOString();
+
+                    const authUser: AuthUser = {
+                        username: credentials.username,
+                        keepConnected: credentials.keepConnected || false,
+                        lastLogin: new Date().toISOString(),
+                        authType: AuthType.OAUTH2,
+                        access_token: response.data.access_token,
+                        refresh_token: response.data.refresh_token,
+                        token_type: response.data.token_type,
+                        expires_in: response.data.expires_in,
+                        tokenExpiresAt,
+                        password: credentials.keepConnected ? credentials.password : undefined,
+                    };
+
+                    await this.saveAuthenticatedUser(authUser);
+                    console.log(`✅ LOGIN ACEITO com status ${response.status}`);
+                    return authUser;
+                } else {
+                    throw new Error(`❌ Status ${response.status} e sem token`);
                 }
             }
 
-            const oauthData: OAuth2Response = response.data;
-            console.log('✅ Token OAuth2 recebido');
-            console.log('🔑 Token Type:', oauthData.token_type);
-            console.log('⏰ Expires In:', oauthData.expires_in, 'segundos');
+        } catch (error: any) {
+            console.error('🚨 === ERRO NO LOGIN ===');
+            console.error('🚨 Tipo do erro:', error.constructor.name);
+            console.error('🚨 Mensagem:', error.message);
 
-            if (!oauthData.access_token) {
-                throw new Error('❌ Token de acesso não retornado pelo servidor');
+            if (error.code) {
+                console.error('🚨 Código:', error.code);
             }
 
-            // Calcular quando o token irá expirar
-            const tokenExpiresAt = new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString();
+            if (error.response) {
+                console.error('🚨 Response Status:', error.response.status);
+                console.error('🚨 Response Data:', error.response.data);
+            }
 
-            // Criar usuário autenticado
-            const authUser: AuthUser = {
-                username: credentials.username,
-                keepConnected: credentials.keepConnected || false,
-                lastLogin: new Date().toISOString(),
-                authType: AuthType.OAUTH2,
-                access_token: oauthData.access_token,
-                refresh_token: oauthData.refresh_token,
-                token_type: oauthData.token_type,
-                expires_in: oauthData.expires_in,
-                tokenExpiresAt,
-            };
-
-            // Salvar usuário
-            await this.saveAuthenticatedUser(authUser);
-
-            console.log('✅ Login OAuth2 concluído com sucesso');
-            return authUser;
-
-        } catch (error: any) {
-            console.error('❌ Erro no login OAuth2:', error);
-
-            // Tratar diferentes tipos de erro axios
+            // TRATAR DIFERENTES TIPOS DE ERRO
             if (error.code === 'ECONNABORTED') {
-                throw new Error('❌ Timeout na conexão com o servidor');
+                throw new Error('❌ Timeout na conexão (servidor demorou mais de 15 segundos)');
             } else if (error.code === 'ECONNREFUSED') {
-                throw new Error('❌ Conexão recusada - verifique se o servidor está ligado');
+                throw new Error('❌ Conexão recusada - servidor pode estar desligado');
             } else if (error.code === 'ENOTFOUND') {
                 throw new Error('❌ Servidor não encontrado - verifique o endereço');
             } else if (error.response) {
-                // Servidor respondeu com erro
                 const status = error.response.status;
                 const data = error.response.data;
 
@@ -144,89 +199,81 @@ export class AuthService {
                     throw new Error(`❌ ${errorMsg}`);
                 }
             } else if (error.request) {
-                throw new Error('❌ Erro de conexão com o servidor');
+                throw new Error('❌ Erro de conexão - servidor não responde');
             } else {
-                throw new Error(`❌ Erro na autenticação: ${error.message}`);
+                throw new Error(`❌ Erro inesperado: ${error.message}`);
             }
         }
     }
 
     /**
-     * Verificar se servidor OAuth2 está funcionando com axios
+     * VERIFICAR AUTO LOGIN
      */
-    async checkSecurity(): Promise<boolean> {
-        const { connection } = useConfigStore.getState();
+    async checkAutoLogin(): Promise<AuthUser | null> {
+        console.log('🔍 === VERIFICANDO AUTO LOGIN ===');
 
-        if (!connection.baseUrl) {
-            return false;
+        const savedUsers = await this.getSavedUsers();
+        console.log('📋 Usuários salvos encontrados:', savedUsers.length);
+
+        if (savedUsers.length === 0) {
+            console.log('ℹ️ Nenhum usuário salvo para auto login');
+            return null;
         }
 
-        console.log('🔒 Verificando servidor OAuth2...');
-        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+        // Ordenar por último login
+        const sortedUsers = savedUsers.sort((a, b) =>
+            new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
+        );
 
-        try {
-            // Tentar com credenciais de teste usando axios
-            const response = await axios.post(oauthUrl, {}, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'username': 'test_user_invalid',
-                    'password': 'test_password_invalid',
-                },
-                timeout: 10000,
-                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
-            });
+        for (const user of sortedUsers) {
+            console.log('🔍 Verificando usuário:', user.username);
+            console.log('🔄 KeepConnected:', user.keepConnected);
+            console.log('🔑 Tem Token:', !!user.access_token);
+            console.log('🔒 Tem Senha:', !!user.password);
 
-            console.log('📡 Status teste segurança:', response.status);
+            if (user.keepConnected && user.access_token && user.password) {
+                // Verificar se token ainda é válido
+                if (user.tokenExpiresAt) {
+                    const expiresAt = new Date(user.tokenExpiresAt);
+                    const now = new Date();
+                    const minutesUntilExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60);
 
-            // Se retornar 401 = servidor funcionando e validando credenciais
-            if (response.status === 401) {
-                console.log('✅ Servidor OAuth2 seguro (rejeitou credenciais inválidas)');
-                return true;
-            }
+                    console.log(`⏰ Token expira em ${minutesUntilExpiry.toFixed(1)} minutos`);
 
-            // Se retornar 400 = servidor funcionando (bad request)
-            if (response.status === 400) {
-                console.log('✅ Servidor OAuth2 funcionando (bad request)');
-                return true;
-            }
+                    if (expiresAt > now) {
+                        console.log('✅ Auto login disponível para:', user.username);
+                        return user;
+                    } else {
+                        console.log('⚠️ Token expirado para:', user.username);
 
-            // Se retornar 200 com token = problema (não deveria aceitar credenciais falsas)
-            if (response.status === 200) {
-                if (response.data?.access_token) {
-                    console.log('⚠️ ATENÇÃO: Servidor aceitou credenciais falsas!');
-                    return false;
+                        // Tentar refresh se tiver refresh_token
+                        if (user.refresh_token) {
+                            try {
+                                console.log('🔄 Tentando renovar token...');
+                                this.currentUser = user;
+                                const refreshedUser = await this.refreshToken();
+                                console.log('✅ Token renovado para auto login');
+                                return refreshedUser;
+                            } catch (error) {
+                                console.log('❌ Erro no refresh para auto login:', error);
+                            }
+                        }
+                    }
                 } else {
-                    console.log('✅ Servidor funcionando');
-                    return true;
+                    console.log('⚠️ Token sem data de expiração');
+                    return user; // Retorna mesmo assim
                 }
+            } else {
+                console.log('❌ Usuário não habilitado para auto login');
             }
-
-            console.log('⚠️ Status inesperado:', response.status);
-            return false;
-
-        } catch (error: any) {
-            console.error('❌ Erro ao verificar segurança:', error);
-
-            if (error.code === 'ECONNABORTED') {
-                console.log('❌ Timeout na verificação');
-                return false;
-            } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-                console.log('❌ Servidor não acessível');
-                return false;
-            } else if (error.response) {
-                // Se retornou erro 401, significa que está seguro
-                if (error.response.status === 401) {
-                    console.log('✅ Servidor OAuth2 seguro (401 em teste)');
-                    return true;
-                }
-            }
-
-            return false;
         }
+
+        console.log('ℹ️ Nenhum auto login válido disponível');
+        return null;
     }
 
     /**
-     * Refresh do token OAuth2 com axios
+     * REFRESH TOKEN
      */
     async refreshToken(): Promise<AuthUser> {
         const currentUser = await this.getCurrentUser();
@@ -252,7 +299,7 @@ export class AuthService {
                 validateStatus: (status) => status < 500,
             });
 
-            if (response.status !== 200 || !response.data.access_token) {
+            if ((response.status !== 200 && response.status !== 201) || !response.data.access_token) {
                 throw new Error(`Erro ${response.status} no refresh token`);
             }
 
@@ -283,49 +330,203 @@ export class AuthService {
     }
 
     /**
-     * Verificar se token está válido
+     * VERIFICAR SEGURANÇA DO SERVIDOR
      */
-    async isTokenValid(): Promise<boolean> {
-        const currentUser = await this.getCurrentUser();
+    async checkSecurity(): Promise<boolean> {
+        const { connection } = useConfigStore.getState();
 
-        if (!currentUser || !currentUser.access_token || !currentUser.tokenExpiresAt) {
+        if (!connection.baseUrl) {
+            console.log('❌ Sem URL base para teste de segurança');
             return false;
         }
 
-        const expiresAt = new Date(currentUser.tokenExpiresAt);
-        const now = new Date();
-        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+        console.log('🔒 === TESTE DE SEGURANÇA INICIADO ===');
+        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+        console.log('🔗 URL de teste:', oauthUrl);
 
-        // Se faltam menos de 5 minutos, considerar inválido
-        if (timeUntilExpiry < 5 * 60 * 1000) {
-            console.log('⚠️ Token expirando em breve');
+        try {
+            // Usar credenciais OBVIAMENTE inválidas
+            const testCredentials = {
+                username: 'usuario_inexistente_teste_12345',
+                password: 'senha_impossivel_teste_67890'
+            };
+
+            console.log('🧪 Testando com credenciais FALSAS:', testCredentials.username);
+
+            const response = await axios.post(oauthUrl, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'username': testCredentials.username,
+                    'password': testCredentials.password,
+                },
+                timeout: 10000,
+                validateStatus: (status) => status < 500,
+            });
+
+            console.log('🔒 Status do teste de segurança:', response.status);
+            console.log('🔒 Data:', response.data);
+
+            if (response.status === 401) {
+                console.log('✅ SERVIDOR SEGURO: Rejeitou credenciais falsas (401)');
+                return true;
+            } else if (response.status === 400) {
+                console.log('✅ SERVIDOR FUNCIONANDO: Bad request (400)');
+                return true;
+            } else if (response.status === 200 || response.status === 201) {
+                if (response.data?.access_token) {
+                    console.log('🚨 PROBLEMA CRÍTICO: Servidor aceitou credenciais FALSAS!');
+                    console.log('🚨 Token recebido:', response.data.access_token.substring(0, 20) + '...');
+                    return false; // SERVIDOR NÃO É SEGURO!
+                } else {
+                    console.log('✅ Servidor funcionando (sem token)');
+                    return true;
+                }
+            } else {
+                console.log(`⚠️ Status inesperado: ${response.status}`);
+                return false;
+            }
+
+        } catch (error: any) {
+            console.error('🔒 Erro no teste de segurança:', error);
+
+            if (error.response?.status === 401) {
+                console.log('✅ SERVIDOR SEGURO: Erro 401 esperado');
+                return true;
+            }
+
+            console.log('❌ Falha no teste de segurança');
             return false;
         }
-
-        return true;
     }
 
     /**
-     * Salvar usuário autenticado
+     * TESTE DE CREDENCIAIS SEM SALVAR - ACEITA 200 E 201
      */
+    async testCredentialsOnly(credentials: LoginCredentials): Promise<{
+        success: boolean;
+        data?: OAuth2Response;
+        error?: string;
+        debugInfo?: any;
+    }> {
+        const { connection } = useConfigStore.getState();
+
+        if (!connection.baseUrl) {
+            return {
+                success: false,
+                error: 'URL não configurada',
+                debugInfo: { step: 'validation', issue: 'no_base_url' }
+            };
+        }
+
+        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+
+        console.log('🧪 === TESTE DE CREDENCIAIS INICIADO ===');
+        console.log('👤 Username:', credentials.username);
+        console.log('🔒 Password:', credentials.password.replace(/./g, '*'));
+        console.log('🔗 URL:', oauthUrl);
+
+        try {
+            const startTime = Date.now();
+
+            const response = await axios.post(oauthUrl, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'username': credentials.username,
+                    'password': credentials.password,
+                },
+                timeout: 10000,
+                validateStatus: (status) => {
+                    console.log(`🧪 Status recebido no teste: ${status}`);
+                    return status < 500;
+                },
+            });
+
+            const endTime = Date.now();
+            const responseTime = endTime - startTime;
+
+            console.log('🧪 === RESULTADO DO TESTE ===');
+            console.log(`⏱️ Tempo de resposta: ${responseTime}ms`);
+            console.log('📡 Status:', response.status);
+            console.log('📊 Data:', JSON.stringify(response.data, null, 2));
+
+            const debugInfo = {
+                status: response.status,
+                responseTime,
+                hasToken: !!response.data?.access_token,
+                tokenType: response.data?.token_type,
+                expiresIn: response.data?.expires_in,
+                hasRefreshToken: !!response.data?.refresh_token,
+                dataKeys: Object.keys(response.data || {}),
+                timestamp: new Date().toISOString(),
+            };
+
+            // ACEITAR STATUS 200 E 201
+            if ((response.status === 200 || response.status === 201) && response.data?.access_token) {
+                console.log(`✅ TESTE: Credenciais ACEITAS pelo servidor (Status: ${response.status})`);
+                return {
+                    success: true,
+                    data: response.data,
+                    debugInfo
+                };
+            } else {
+                console.log(`❌ TESTE: Credenciais REJEITADAS (Status: ${response.status})`);
+                return {
+                    success: false,
+                    error: response.data?.error || `Status ${response.status}`,
+                    debugInfo
+                };
+            }
+
+        } catch (error: any) {
+            console.error('🧪 === ERRO NO TESTE ===');
+            console.error('Erro completo:', error);
+
+            let errorMessage = 'Erro na requisição';
+            let debugInfo: any = {
+                errorType: error.constructor.name,
+                errorCode: error.code,
+                timestamp: new Date().toISOString(),
+            };
+
+            if (error.code === 'ECONNABORTED') {
+                errorMessage = 'Timeout na requisição (10s)';
+                debugInfo.issue = 'timeout';
+            } else if (error.response) {
+                errorMessage = error.response.data?.error || `Status ${error.response.status}`;
+                debugInfo = {
+                    ...debugInfo,
+                    responseStatus: error.response.status,
+                    responseData: error.response.data,
+                    issue: 'server_error',
+                };
+            } else if (error.request) {
+                errorMessage = 'Servidor não responde';
+                debugInfo.issue = 'no_response';
+            } else {
+                errorMessage = error.message || 'Erro desconhecido';
+                debugInfo.issue = 'unknown';
+            }
+
+            return {
+                success: false,
+                error: errorMessage,
+                debugInfo
+            };
+        }
+    }
+
+    // ... resto dos métodos iguais (saveAuthenticatedUser, signOut, getCurrentUser, etc.)
+
     private async saveAuthenticatedUser(authUser: AuthUser): Promise<void> {
         this.currentUser = authUser;
-
-        // Salvar usuário atual
         await asyncStorageService.setItem('current_user', authUser);
 
-        // Se keepConnected, salvar para auto login
         if (authUser.keepConnected) {
             let savedUsers = await this.getSavedUsers();
-
-            // Remover usuário existente
             savedUsers = savedUsers.filter(u =>
                 u.username.toLowerCase() !== authUser.username.toLowerCase()
             );
-
-            // Adicionar usuário atualizado
             savedUsers.push(authUser);
-
             await asyncStorageService.setItem('saved_users', savedUsers);
             console.log('💾 Usuário salvo para auto login');
         }
@@ -333,13 +534,9 @@ export class AuthService {
         console.log('✅ Usuário salvo no storage');
     }
 
-    /**
-     * Logout com axios
-     */
     async signOut(): Promise<void> {
         console.log('🚪 Fazendo logout...');
 
-        // Tentar revogar token no servidor (opcional)
         try {
             const currentUser = await this.getCurrentUser();
             if (currentUser?.access_token) {
@@ -351,7 +548,7 @@ export class AuthService {
                         'Authorization': `Bearer ${currentUser.access_token}`,
                     },
                     timeout: 5000,
-                    validateStatus: () => true, // Aceitar qualquer status
+                    validateStatus: () => true,
                 });
 
                 console.log('🔓 Token revogado no servidor');
@@ -360,16 +557,11 @@ export class AuthService {
             console.log('⚠️ Erro ao revogar token (continuando logout):', error);
         }
 
-        // Limpar estado local
         this.currentUser = null;
         await asyncStorageService.removeItem('current_user');
-
         console.log('✅ Logout realizado');
     }
 
-    /**
-     * Obter usuário atual
-     */
     async getCurrentUser(): Promise<AuthUser | null> {
         if (this.currentUser) {
             return this.currentUser;
@@ -383,84 +575,41 @@ export class AuthService {
         return this.currentUser;
     }
 
-    /**
-     * Verificar auto login
-     */
-    async checkAutoLogin(): Promise<AuthUser | null> {
-        console.log('🔍 Verificando auto login...');
+    async isTokenValid(): Promise<boolean> {
+        const currentUser = await this.getCurrentUser();
 
-        const savedUsers = await this.getSavedUsers();
-
-        if (savedUsers.length === 0) {
-            console.log('ℹ️ Nenhum usuário salvo');
-            return null;
+        if (!currentUser || !currentUser.access_token || !currentUser.tokenExpiresAt) {
+            return false;
         }
 
-        // Ordenar por último login
-        const sortedUsers = savedUsers.sort((a, b) =>
-            new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
-        );
+        const expiresAt = new Date(currentUser.tokenExpiresAt);
+        const now = new Date();
+        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
 
-        for (const user of sortedUsers) {
-            if (user.keepConnected && user.access_token) {
-                // Verificar se token ainda é válido
-                const expiresAt = new Date(user.tokenExpiresAt);
-                const now = new Date();
-
-                if (expiresAt > now) {
-                    console.log('✅ Auto login disponível para:', user.username);
-                    return user;
-                } else {
-                    console.log('⚠️ Token expirado para:', user.username);
-
-                    // Tentar refresh se tiver refresh_token
-                    if (user.refresh_token) {
-                        try {
-                            this.currentUser = user;
-                            const refreshedUser = await this.refreshToken();
-                            console.log('✅ Token renovado para auto login');
-                            return refreshedUser;
-                        } catch (error) {
-                            console.log('❌ Erro no refresh para auto login:', error);
-                        }
-                    }
-                }
-            }
+        if (timeUntilExpiry < 5 * 60 * 1000) {
+            console.log('⚠️ Token expirando em breve');
+            return false;
         }
 
-        console.log('ℹ️ Nenhum auto login válido disponível');
-        return null;
+        return true;
     }
 
-    /**
-     * Obter token de autorização
-     */
     getAuthToken(): string | null {
         if (!this.currentUser?.access_token) {
             return null;
         }
-
-        return `${this.currentUser.token_type} ${this.currentUser.access_token}`;
+        return this.currentUser.access_token;
     }
 
-    /**
-     * Obter tipo de autenticação
-     */
     getAuthType(): AuthType {
         return AuthType.OAUTH2;
     }
 
-    /**
-     * Obter usuários salvos
-     */
     private async getSavedUsers(): Promise<AuthUser[]> {
         const users = await asyncStorageService.getItem<AuthUser[]>('saved_users');
         return Array.isArray(users) ? users : [];
     }
 
-    /**
-     * Limpar todos os dados (debug)
-     */
     async clearStorage(): Promise<void> {
         console.log('🗑️ Limpando storage OAuth2...');
         await asyncStorageService.removeItem('current_user');
@@ -469,18 +618,12 @@ export class AuthService {
         console.log('✅ Storage limpo');
     }
 
-    /**
-     * Listar usuários salvos (debug)
-     */
     async listStoredUsers(): Promise<AuthUser[]> {
         const users = await this.getSavedUsers();
         console.log('📋 Usuários salvos:', users.length);
         return users;
     }
 
-    /**
-     * Informações do sistema (debug)
-     */
     getSystemInfo() {
         return {
             currentUser: this.currentUser?.username || null,
@@ -491,60 +634,9 @@ export class AuthService {
         };
     }
 
-    /**
-     * Testar credenciais sem salvar (debug) com axios
-     */
-    async testCredentialsOnly(credentials: LoginCredentials): Promise<{
-        success: boolean;
-        data?: OAuth2Response;
-        error?: string;
-    }> {
-        const { connection } = useConfigStore.getState();
-
-        if (!connection.baseUrl) {
-            return { success: false, error: 'URL não configurada' };
-        }
-
-        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
-
-        try {
-            const response = await axios.post(oauthUrl, {}, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'username': credentials.username,
-                    'password': credentials.password,
-                },
-                timeout: 10000,
-                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
-            });
-
-            if (response.status === 200 && response.data.access_token) {
-                return { success: true, data: response.data };
-            } else {
-                return {
-                    success: false,
-                    error: response.data?.error || `Status ${response.status}`
-                };
-            }
-
-        } catch (error: any) {
-            let errorMessage = 'Erro na requisição';
-
-            if (error.code === 'ECONNABORTED') {
-                errorMessage = 'Timeout na requisição';
-            } else if (error.response) {
-                errorMessage = error.response.data?.error || `Status ${error.response.status}`;
-            } else if (error.request) {
-                errorMessage = 'Não foi possível conectar ao servidor';
-            } else {
-                errorMessage = error.message || 'Erro desconhecido';
-            }
-
-            return {
-                success: false,
-                error: errorMessage
-            };
-        }
+    // Alias para compatibilidade
+    async ['getStoredUsers'](): Promise<AuthUser[]> {
+        return this.getSavedUsers();
     }
 }
 

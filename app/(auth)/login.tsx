@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx
+// app/(auth)/login.tsx - TOAST CORRIGIDO
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -23,7 +23,7 @@ export default function LoginScreen() {
     const { theme } = useTheme();
     const { login } = useAuthStore();
     const { canProceedToLogin } = useConfigStore();
-    const { showSuccess, showError, visible, message, type, hideToast } = useToastStore();
+    const { showSuccess, showError, showInfo, visible, message, type, hideToast } = useToastStore();
     const {
         authenticate,
         isAvailable: biometricAvailable,
@@ -53,7 +53,7 @@ export default function LoginScreen() {
 
         // Verificar se a configuração REST está OK
         if (!canProceedToLogin()) {
-            showError('Configuração REST não encontrada. Redirecionando...');
+            showError('❌ Configuração REST não encontrada. Redirecionando...');
             setTimeout(() => {
                 router.replace('/(auth)/setup');
             }, 2000);
@@ -73,7 +73,7 @@ export default function LoginScreen() {
 
                 setOptions({
                     savePassword: autoUser.keepConnected,
-                    enableBiometric: false, // Será definido após verificar biometria
+                    enableBiometric: false,
                 });
 
                 setShowAutoLoginOptions(true);
@@ -110,85 +110,121 @@ export default function LoginScreen() {
     };
 
     const handleLogin = async () => {
+        console.log('🔄 === INICIANDO PROCESSO DE LOGIN ===');
+
         if (!validateForm()) {
-            showError('Por favor, corrija os erros no formulário');
+            showError('❌ Por favor, corrija os erros no formulário');
             return;
         }
 
         if (!canProceedToLogin()) {
-            showError('Configuração REST não encontrada');
+            showError('❌ Configuração REST não encontrada');
             return;
         }
 
         setIsLoading(true);
 
         try {
+            console.log('👤 Tentando login com:', formData.username);
+
             // Atualizar URL base do httpService
             httpService.updateBaseURL();
 
-            // Verificar segurança do servidor primeiro
-            showSuccess('🔒 Verificando segurança do servidor...');
+            // 1. Verificar segurança do servidor primeiro
+            showInfo('🔒 Verificando segurança do servidor...');
             const isSecure = await authService.checkSecurity();
 
             if (!isSecure) {
+                console.log('❌ Servidor não seguro');
                 showError('❌ Servidor não está seguro. Verifique as configurações.');
                 return;
             }
 
-            showSuccess('✅ Servidor seguro. Autenticando...');
+            console.log('✅ Servidor seguro confirmado');
+            showInfo('✅ Servidor seguro. Autenticando...');
 
-            // Realizar o login
+            // 2. Realizar o login
             const authUser = await authService.signIn({
                 username: formData.username,
                 password: formData.password,
                 keepConnected: options.savePassword,
             });
 
-            // Converter AuthUser para User do store
+            console.log('✅ Login OAuth2 bem-sucedido:', authUser.username);
+
+            // 3. Converter AuthUser para User do store
             const storeUser = {
                 id: authUser.username,
                 username: authUser.username,
                 name: authUser.username,
-                email: '', // Pode ser obtido do servidor posteriormente
+                email: '',
             };
 
-            // Salvar no store
+            // 4. Salvar no store
             login(storeUser);
 
-            // Configurar biometria se solicitado
+            // 5. Configurar biometria se solicitado
             if (options.enableBiometric && biometricAvailable && isEnrolled) {
                 try {
+                    showInfo('🔒 Configurando biometria...');
                     const biometricSuccess = await authenticate();
                     if (biometricSuccess) {
                         showSuccess('✅ Biometria configurada com sucesso!');
+                        console.log('✅ Biometria configurada');
+                    } else {
+                        console.log('⚠️ Usuário cancelou biometria');
+                        // Não mostra erro, só aviso
                     }
                 } catch (biometricError) {
-                    console.warn('Erro ao configurar biometria:', biometricError);
-                    showError('⚠️ Não foi possível configurar a biometria');
+                    console.warn('⚠️ Erro ao configurar biometria:', biometricError);
+                    // Não bloqueia o login por erro de biometria
                 }
             }
 
+            // 6. Sucesso final
             showSuccess('🎉 Login realizado com sucesso!');
+            console.log('🎉 Login completamente finalizado');
 
-            // Aguardar um momento para o usuário ver o sucesso
+            // Aguardar para mostrar sucesso
             setTimeout(() => {
                 router.replace('/(app)/branch-selection');
             }, 1500);
 
-        } catch (error) {
-            console.error('Erro no login:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Erro na autenticação';
-            showError(`❌ ${errorMessage}`);
+        } catch (error: any) {
+            console.error('❌ ERRO NO LOGIN:', error);
+
+            // Tratar diferentes tipos de erro com mensagens específicas
+            let errorMessage = 'Erro na autenticação';
+
+            if (error.message) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            }
+
+            // Remover emoji duplicado se já existe
+            if (!errorMessage.startsWith('❌')) {
+                errorMessage = `❌ ${errorMessage}`;
+            }
+
+            console.log('📤 Mostrando erro para usuário:', errorMessage);
+            showError(errorMessage);
+
         } finally {
             setIsLoading(false);
+            console.log('🏁 Processo de login finalizado');
         }
     };
 
     const handleAutoLogin = async (user: any) => {
-        if (!user || !user.password) return;
+        if (!user || !user.password) {
+            console.log('❌ Dados insuficientes para auto login');
+            return;
+        }
 
+        console.log('🔄 === INICIANDO AUTO LOGIN ===');
         setIsLoading(true);
-        showSuccess('🔄 Fazendo login automático...');
+        showInfo('🔄 Fazendo login automático...');
 
         try {
             // Usar os dados salvos para login
@@ -207,14 +243,21 @@ export default function LoginScreen() {
 
             login(storeUser);
             showSuccess('✅ Login automático realizado!');
+            console.log('✅ Auto login bem-sucedido');
 
             setTimeout(() => {
                 router.replace('/(app)/branch-selection');
             }, 1000);
 
-        } catch (error) {
-            console.error('Erro no auto login:', error);
-            showError('❌ Erro no login automático. Faça login manualmente.');
+        } catch (error: any) {
+            console.error('❌ Erro no auto login:', error);
+
+            let errorMessage = error.message || 'Erro no login automático';
+            if (!errorMessage.startsWith('❌')) {
+                errorMessage = `❌ ${errorMessage}`;
+            }
+
+            showError(`${errorMessage}. Faça login manualmente.`);
             setShowAutoLoginOptions(false);
             setAutoLoginUser(null);
         } finally {
@@ -234,6 +277,7 @@ export default function LoginScreen() {
         }
 
         try {
+            showInfo(`🔒 Autentique-se com ${getBiometricTypeName()}...`);
             const biometricSuccess = await authenticate();
 
             if (biometricSuccess) {
@@ -242,7 +286,7 @@ export default function LoginScreen() {
                 showError('❌ Falha na autenticação biométrica');
             }
         } catch (error) {
-            console.error('Erro na biometria:', error);
+            console.error('❌ Erro na biometria:', error);
             showError('❌ Erro na autenticação biométrica');
         }
     };
@@ -447,8 +491,6 @@ export default function LoginScreen() {
                             />
                         )}
 
-
-
                         <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
                             Meu Backoffice Protheus v1.0.0
                         </Text>
@@ -463,10 +505,6 @@ export default function LoginScreen() {
                     onHide={hideToast}
                 />
             </View>
-
-
-
-
         </SafeArea>
     );
 }

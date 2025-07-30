@@ -1,4 +1,4 @@
-// src/components/debug/UltraDebugScreen.tsx - VERSÃO OAUTH2 PROTHEUS
+// src/components/debug/UltraDebugScreen.tsx - TOAST CORRIGIDO
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -25,7 +25,7 @@ interface DebugLog {
 export default function UltraDebugScreen() {
     const { theme } = useThemeStore();
     const { connection } = useConfigStore();
-    const { showSuccess, showError, visible, message, type, hideToast } = useToastStore();
+    const { showSuccess, showError, showWarning, visible, message, type, hideToast } = useToastStore();
 
     // Credenciais de teste OAuth2
     const [credentials, setCredentials] = useState({
@@ -62,7 +62,7 @@ export default function UltraDebugScreen() {
     };
 
     /**
-     * Teste completo OAuth2 Protheus
+     * Teste completo OAuth2 Protheus - TOAST CORRIGIDO
      */
     const testCompleteOAuth2Flow = async () => {
         setIsRunning(true);
@@ -76,7 +76,7 @@ export default function UltraDebugScreen() {
 
             if (!connection.baseUrl) {
                 addLog('error', 'URL base OAuth2 não configurada');
-                showError('Configure o servidor OAuth2 primeiro');
+                showError('❌ Configure o servidor OAuth2 primeiro');
                 return;
             }
 
@@ -140,7 +140,7 @@ export default function UltraDebugScreen() {
                 addLog('error', 'Erro ao verificar segurança OAuth2', secError);
             }
 
-            // 5. TESTE CREDENCIAIS ERRADAS (deve falhar)
+            // 5. TESTE CREDENCIAIS ERRADAS (deve falhar) - TOAST CORRIGIDO
             addLog('info', '5️⃣ 🧪 TESTANDO CREDENCIAIS ERRADAS OAuth2');
             addLog('warning', `Testando credenciais ERRADAS: ${wrongCredentials.username}/${wrongCredentials.password}`);
 
@@ -151,20 +151,25 @@ export default function UltraDebugScreen() {
                 });
 
                 if (wrongResult.success) {
+                    // PROBLEMA DETECTADO - credenciais erradas foram aceitas
                     addLog('error', '🚨 PROBLEMA! OAuth2 aceitou credenciais ERRADAS!', wrongResult.data);
                     showError('🚨 PROBLEMA DETECTADO! Servidor OAuth2 aceitou credenciais erradas!');
                 } else {
+                    // COMPORTAMENTO CORRETO - credenciais erradas foram rejeitadas
                     addLog('success', '✅ OAuth2 rejeitou credenciais ERRADAS (correto)', {
                         error: wrongResult.error,
                     });
+                    showSuccess('✅ Validação funcionando - credenciais erradas rejeitadas');
                 }
             } catch (wrongError: any) {
+                // COMPORTAMENTO CORRETO - erro ao tentar credenciais erradas
                 addLog('success', '✅ OAuth2 rejeitou credenciais ERRADAS com erro (esperado)', {
                     error: wrongError.message,
                 });
+                showSuccess('✅ Validação funcionando - erro esperado para credenciais erradas');
             }
 
-            // 6. TESTE CREDENCIAIS CORRETAS (deve passar)
+            // 6. TESTE CREDENCIAIS CORRETAS (deve passar) - TOAST CORRIGIDO
             addLog('info', '6️⃣ 🧪 TESTANDO CREDENCIAIS CORRETAS OAuth2');
             addLog('info', `Testando credenciais CORRETAS: ${credentials.username}/${credentials.password}`);
 
@@ -175,7 +180,9 @@ export default function UltraDebugScreen() {
                 });
 
                 if (correctResult.success) {
+                    // COMPORTAMENTO CORRETO - credenciais corretas foram aceitas
                     addLog('success', '✅ OAuth2 aceitou credenciais CORRETAS!', correctResult.data);
+                    showSuccess('✅ Credenciais corretas funcionando!');
 
                     // Validar token recebido
                     if (correctResult.data?.access_token) {
@@ -189,17 +196,21 @@ export default function UltraDebugScreen() {
                         addLog('warning', '⚠️ Token OAuth2 não encontrado na resposta');
                     }
                 } else {
+                    // PROBLEMA DETECTADO - credenciais corretas foram rejeitadas
                     addLog('error', '❌ OAuth2 rejeitou credenciais CORRETAS (problema!)', {
                         error: correctResult.error,
                     });
+                    showError('❌ PROBLEMA! Credenciais corretas foram rejeitadas');
                 }
             } catch (correctError: any) {
+                // PROBLEMA DETECTADO - erro inesperado com credenciais corretas
                 addLog('error', '❌ Erro inesperado com credenciais CORRETAS', {
                     error: correctError.message,
                 });
+                showError('❌ Erro inesperado com credenciais corretas');
             }
 
-            // 7. TESTE LOGIN COMPLETO OAuth2
+            // 7. TESTE LOGIN COMPLETO OAuth2 - TOAST CORRIGIDO
             addLog('info', '7️⃣ 🚨 TESTE LOGIN COMPLETO OAuth2');
 
             // Login com credenciais erradas (deve falhar)
@@ -211,6 +222,7 @@ export default function UltraDebugScreen() {
                     keepConnected: false,
                 });
 
+                // Se chegou aqui, é um problema - login errado passou
                 addLog('error', '🚨 PROBLEMA GRAVE! Login OAuth2 errado passou!');
                 showError('🚨 PROBLEMA DETECTADO! Login OAuth2 errado passou!');
 
@@ -218,9 +230,11 @@ export default function UltraDebugScreen() {
                 await authService.signOut();
 
             } catch (wrongLoginError: any) {
+                // Comportamento correto - login errado foi rejeitado
                 addLog('success', '✅ Login OAuth2 com credenciais erradas foi rejeitado (correto)', {
                     error: wrongLoginError.message,
                 });
+                showSuccess('✅ Login com credenciais erradas rejeitado corretamente');
             }
 
             // Login com credenciais corretas (deve passar)
@@ -232,6 +246,7 @@ export default function UltraDebugScreen() {
                     keepConnected: false,
                 });
 
+                // Comportamento correto - login correto passou
                 addLog('success', '✅ Login OAuth2 com credenciais corretas funcionou!', {
                     username: authUser.username,
                     authType: authUser.authType,
@@ -240,15 +255,18 @@ export default function UltraDebugScreen() {
                     tokenExpiresAt: authUser.tokenExpiresAt,
                     hasRefreshToken: !!authUser.refresh_token,
                 });
+                showSuccess('✅ Login com credenciais corretas funcionou!');
 
                 // Fazer logout
                 await authService.signOut();
                 addLog('info', 'Logout OAuth2 após teste');
 
             } catch (correctLoginError: any) {
+                // Problema - login correto falhou
                 addLog('error', '❌ Login OAuth2 com credenciais corretas falhou!', {
                     error: correctLoginError.message,
                 });
+                showError('❌ PROBLEMA! Login com credenciais corretas falhou');
             }
 
             // 8. Verificar estado final
@@ -266,6 +284,7 @@ export default function UltraDebugScreen() {
                 message: error.message,
                 stack: error.stack,
             });
+            showError('❌ Erro durante investigação OAuth2');
         } finally {
             setIsRunning(false);
             addLog('info', '🏁 INVESTIGAÇÃO OAUTH2 FINALIZADA');
@@ -310,7 +329,7 @@ export default function UltraDebugScreen() {
     };
 
     /**
-     * Teste específico de credenciais OAuth2
+     * Teste específico de credenciais OAuth2 - TOAST CORRIGIDO
      */
     const testSpecificCredentials = async (creds: any, label: string) => {
         setIsRunning(true);
@@ -325,29 +344,37 @@ export default function UltraDebugScreen() {
             addLog('info', `Resultado ${label} OAuth2`, result);
 
             if (label.includes('CORRETAS')) {
+                // Testando credenciais CORRETAS
                 if (result.success) {
-                    showSuccess(`✅ ${label} OAuth2 válidas`);
+                    // Comportamento correto - credenciais corretas aceitas
+                    showSuccess(`✅ ${label} OAuth2 aceitas pelo servidor!`);
                     addLog('success', `${label} OAuth2 aceitas pelo servidor`, result.data);
                 } else {
-                    showError(`❌ ${label} OAuth2 rejeitadas`);
-                    addLog('error', `${label} OAuth2 rejeitadas`, result);
+                    // Problema - credenciais corretas rejeitadas
+                    showError(`❌ PROBLEMA! ${label} OAuth2 foram rejeitadas`);
+                    addLog('error', `${label} OAuth2 rejeitadas (problema!)`, result);
                 }
             } else {
+                // Testando credenciais ERRADAS
                 if (!result.success) {
-                    showSuccess(`✅ ${label} OAuth2 rejeitadas (correto)`);
+                    // Comportamento correto - credenciais erradas rejeitadas
+                    showSuccess(`✅ ${label} OAuth2 rejeitadas corretamente!`);
                     addLog('success', `${label} OAuth2 rejeitadas (comportamento correto)`, result);
                 } else {
-                    showError(`❌ ${label} OAuth2 aceitas (problema!)`);
+                    // Problema - credenciais erradas aceitas
+                    showError(`❌ PROBLEMA! ${label} OAuth2 foram aceitas!`);
                     addLog('error', `${label} OAuth2 aceitas (problema!)`, result);
                 }
             }
 
         } catch (error: any) {
             if (label.includes('ERRADAS')) {
+                // Para credenciais erradas, erro é esperado
                 showSuccess(`✅ ${label} OAuth2 rejeitadas com erro (esperado)`);
                 addLog('success', `${label} OAuth2 rejeitadas com erro (esperado)`, error);
             } else {
-                showError(`❌ Erro inesperado em ${label} OAuth2`);
+                // Para credenciais corretas, erro é problema
+                showError(`❌ Erro inesperado com ${label} OAuth2`);
                 addLog('error', `Erro em ${label} OAuth2`, error);
             }
         } finally {
@@ -543,7 +570,7 @@ export default function UltraDebugScreen() {
                                 onPress={async () => {
                                     await authService.clearStorage();
                                     clearLogs();
-                                    showSuccess('Storage OAuth2 limpo');
+                                    showSuccess('✅ Storage OAuth2 limpo');
                                 }}
                                 leftIcon={<Ionicons name="trash" size={18} color="#ef4444" />}
                             />
