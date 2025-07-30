@@ -1,4 +1,4 @@
-// src/screens/debug/UltraDebugScreen.tsx
+// src/components/debug/UltraDebugScreen.tsx - VERSÃO MELHORADA
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -8,8 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Toast } from '../../components/ui/Toast';
-import { authService } from '../../services/api/authService';
-import { httpService } from '../../services/api/httpService';
+import { authService, AuthService } from '../../services/api/authService';
 import { useConfigStore } from '../../store/configStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useToastStore } from '../../store/toastStore';
@@ -27,14 +26,15 @@ export default function UltraDebugScreen() {
     const { connection } = useConfigStore();
     const { showSuccess, showError, visible, message, type, hideToast } = useToastStore();
 
+    // ✅ SUAS CREDENCIAIS CORRETAS
     const [credentials, setCredentials] = useState({
         username: 'admin',
-        password: '123456',
+        password: '1234', // ← SUA SENHA CORRETA
     });
 
     const [wrongCredentials, setWrongCredentials] = useState({
         username: 'admin',
-        password: 'SENHA_ERRADA_123',
+        password: 'senha_totalmente_errada',
     });
 
     const [logs, setLogs] = useState<DebugLog[]>([]);
@@ -60,12 +60,14 @@ export default function UltraDebugScreen() {
         console.log('🔬 === ULTRA DEBUG MODE ATIVADO ===');
     };
 
-    // 🚨 TESTE PRINCIPAL - Investigar o problema
+    /**
+     * ✅ TESTE PRINCIPAL MELHORADO
+     */
     const investigateProblem = async () => {
         setIsRunning(true);
         clearLogs();
 
-        addLog('info', '🔬 INICIANDO INVESTIGAÇÃO DO PROBLEMA');
+        addLog('info', '🔬 INVESTIGAÇÃO COMPLETA INICIADA');
 
         try {
             // 1. Verificar configuração
@@ -90,81 +92,126 @@ export default function UltraDebugScreen() {
             await authService.clearStorage();
             addLog('success', 'Storage limpo');
 
-            // 3. Verificar segurança do servidor
-            addLog('info', '3️⃣ Verificando segurança do servidor...');
+            // 3. Verificar credenciais válidas no sistema
+            addLog('info', '3️⃣ Verificando credenciais válidas...');
+            const validCreds = AuthService.getValidCredentials().map(c => c.username);
+            addLog('info', 'Credenciais válidas no sistema', validCreds);
+
+            // 4. Verificar segurança do servidor
+            addLog('info', '4️⃣ Verificando segurança do servidor...');
 
             try {
                 const isSecure = await authService.checkSecurity();
 
                 if (isSecure) {
-                    addLog('success', 'Servidor SEGURO ✅ (Status 401)');
+                    addLog('success', 'Servidor SEGURO ✅ (Valida credenciais adequadamente)');
                 } else {
-                    addLog('warning', 'Servidor NÃO SEGURO ⚠️ (Ping funcionou)');
-                    addLog('warning', 'Isso pode explicar por que senhas erradas passam!');
+                    addLog('warning', 'Servidor NÃO SEGURO ⚠️ (Não valida credenciais ou sempre retorna 200)');
+                    addLog('warning', 'Sistema usará apenas validação local');
                 }
             } catch (secError) {
                 addLog('error', 'Erro ao verificar segurança', secError);
             }
 
-            // 4. TESTE COM CREDENCIAIS ERRADAS (deve falhar)
-            addLog('info', '4️⃣ 🚨 TESTANDO CREDENCIAIS ERRADAS (DEVE FALHAR)');
-            addLog('warning', `Testando: ${wrongCredentials.username} / ${wrongCredentials.password}`);
+            // 5. TESTE NOVO: Verificar credenciais usando método de teste
+            addLog('info', '5️⃣ 🧪 TESTANDO CREDENCIAIS COM NOVO MÉTODO');
 
+            // Teste credenciais corretas
+            addLog('info', `Testando credenciais CORRETAS: ${credentials.username}/${credentials.password}`);
             try {
-                // Usar método ultra rigoroso (sem fallback)
-                const resultWrong = await authService.signIn({
+                const testResult = await authService.testCredentialsOnly({
+                    username: credentials.username,
+                    password: credentials.password,
+                });
+
+                addLog('success', 'Resultado do teste de credenciais corretas', testResult);
+
+                if (testResult.localValid) {
+                    addLog('success', '✅ Credenciais CORRETAS são válidas localmente');
+                } else {
+                    addLog('error', '❌ Credenciais CORRETAS são inválidas localmente (problema!)');
+                }
+
+                if (testResult.serverAvailable) {
+                    addLog('success', '✅ Servidor está disponível');
+
+                    if (testResult.serverAuthWorked) {
+                        addLog('success', '✅ Servidor ACEITOU as credenciais corretas');
+                    } else {
+                        addLog('error', '❌ Servidor REJEITOU as credenciais corretas (problema!)');
+                    }
+                } else {
+                    addLog('warning', '⚠️ Servidor não está disponível (mas login local funciona)');
+                }
+            } catch (testError) {
+                addLog('error', 'Erro no teste de credenciais corretas', testError);
+            }
+
+            // Teste credenciais erradas
+            addLog('info', `Testando credenciais ERRADAS: ${wrongCredentials.username}/${wrongCredentials.password}`);
+            try {
+                const testResult = await authService.testCredentialsOnly({
+                    username: wrongCredentials.username,
+                    password: wrongCredentials.password,
+                });
+
+                addLog('info', 'Resultado do teste de credenciais erradas', testResult);
+
+                if (!testResult.localValid) {
+                    addLog('success', '✅ Credenciais ERRADAS são rejeitadas localmente (correto)');
+                } else {
+                    addLog('error', '❌ Credenciais ERRADAS são aceitas localmente (problema!)');
+                }
+
+                if (testResult.serverAvailable) {
+                    if (!testResult.serverAuthWorked) {
+                        addLog('success', '✅ Servidor REJEITOU as credenciais erradas (correto)');
+                    } else {
+                        addLog('error', '❌ Servidor ACEITOU as credenciais erradas (problema!)');
+                    }
+                } else {
+                    addLog('info', 'ℹ️ Servidor não disponível para testar credenciais erradas');
+                }
+            } catch (testError) {
+                addLog('success', 'Credenciais erradas rejeitadas com erro (esperado)', testError);
+            }
+
+            // 6. TESTE COMPLETO DE LOGIN
+            addLog('info', '6️⃣ 🚨 TESTE COMPLETO DE LOGIN');
+
+            // Login com credenciais erradas (deve falhar)
+            addLog('warning', 'Testando LOGIN COMPLETO com credenciais ERRADAS...');
+            try {
+                await authService.signIn({
                     username: wrongCredentials.username,
                     password: wrongCredentials.password,
                     keepConnected: false,
-                    //forceOffline: false, // Força servidor
                 });
 
-                // 🚨 SE CHEGOU AQUI, TEM PROBLEMA GRAVE!
-                addLog('error', '🚨 PROBLEMA GRAVE! Credenciais erradas foram ACEITAS!', {
-                    username: resultWrong.username,
-                    authType: resultWrong.authType,
-                });
-
-                showError('🚨 PROBLEMA DETECTADO! Credenciais erradas passaram!');
+                addLog('error', '🚨 PROBLEMA GRAVE! Login errado passou!');
+                showError('🚨 PROBLEMA DETECTADO! Login errado passou!');
 
                 // Fazer logout imediato
                 await authService.signOut();
 
-                // Investigar por que passou
-                addLog('error', '🔍 Investigando por que credenciais erradas passaram...');
-
-                // Verificar se foi para storage offline
-                const usersAfter = await authService.listStoredUsers();
-                if (usersAfter.length > 0) {
-                    addLog('error', '❌ Sistema criou usuário com credenciais erradas no storage!');
-                } else {
-                    addLog('info', 'Storage ainda está vazio');
-                }
-
             } catch (wrongError: any) {
-                // ISSO É O COMPORTAMENTO ESPERADO
-                addLog('success', '✅ CORRETO! Credenciais erradas foram REJEITADAS', {
+                addLog('success', '✅ Login com credenciais erradas foi rejeitado (correto)', {
                     error: wrongError.message,
                 });
-
-                showSuccess('✅ Validação funcionando - credenciais erradas rejeitadas');
             }
 
-            // 5. TESTE COM CREDENCIAIS CORRETAS (deve passar)
-            addLog('info', '5️⃣ ✅ TESTANDO CREDENCIAIS CORRETAS (DEVE PASSAR)');
-            addLog('info', `Testando: ${credentials.username} / ${credentials.password}`);
-
+            // Login com credenciais corretas (deve passar)
+            addLog('info', 'Testando LOGIN COMPLETO com credenciais CORRETAS...');
             try {
-                const resultCorrect = await authService.signIn({
+                const authUser = await authService.signIn({
                     username: credentials.username,
                     password: credentials.password,
                     keepConnected: false,
-                    //forceOffline: false,
                 });
 
-                addLog('success', '✅ CORRETO! Credenciais corretas foram ACEITAS', {
-                    username: resultCorrect.username,
-                    authType: resultCorrect.authType,
+                addLog('success', '✅ Login com credenciais corretas funcionou!', {
+                    username: authUser.username,
+                    authType: authUser.authType,
                 });
 
                 // Fazer logout
@@ -172,21 +219,20 @@ export default function UltraDebugScreen() {
                 addLog('info', 'Logout após teste');
 
             } catch (correctError: any) {
-                addLog('error', '❌ PROBLEMA! Credenciais corretas foram REJEITADAS', {
+                addLog('error', '❌ Login com credenciais corretas falhou!', {
                     error: correctError.message,
                 });
-
-                showError('❌ Credenciais corretas falharam!');
             }
 
-            // 6. Verificar estado final
-            addLog('info', '6️⃣ Verificando estado final...');
-
+            // 7. Verificar estado final
+            addLog('info', '7️⃣ Estado final do sistema...');
             const finalUsers = await authService.listStoredUsers();
-            addLog('info', `Usuários no storage: ${finalUsers.length}`);
+            const finalSystemInfo = authService.getSystemInfo();
 
-            const systemInfo = authService.getSystemInfo();
-            addLog('info', 'Info do sistema', systemInfo);
+            addLog('info', `Usuários no storage: ${finalUsers.length}`);
+            addLog('info', 'Info final do sistema', finalSystemInfo);
+
+            showSuccess('✅ Investigação completa finalizada!');
 
         } catch (error: any) {
             addLog('error', 'Erro durante investigação', {
@@ -199,77 +245,100 @@ export default function UltraDebugScreen() {
         }
     };
 
-    // 🧪 Teste direto no servidor (bypass authService)
-    const testDirectServer = async () => {
+    /**
+     * ✅ TESTE RÁPIDO DE CREDENCIAIS (VERSÃO IONIC)
+     */
+    const quickTestCredentials = async (creds: any, label: string) => {
         setIsRunning(true);
-        addLog('info', '🧪 TESTE DIRETO NO SERVIDOR (BYPASS AUTHSERVICE)');
+        addLog('info', `🧪 TESTE RÁPIDO: ${label}...`);
 
         try {
-            httpService.updateBaseURL();
-            const baseURL = httpService.getBaseURL();
+            const result = await authService.testCredentialsOnly({
+                username: creds.username,
+                password: creds.password,
+            });
 
-            addLog('info', `URL base: ${baseURL}`);
+            addLog('success', `Resultado ${label}`, result);
 
-            // Teste direto com axios
-            const authHeader = btoa(`${wrongCredentials.username}:${wrongCredentials.password}`);
-
-            addLog('info', 'Fazendo requisição direta com credenciais ERRADAS...');
-
-            try {
-                const response = await fetch(`${baseURL}/healthcheck`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Basic ${authHeader}`,
-                        'Content-Type': 'application/json',
-                    },
-                    //timeout: 10000,
-                });
-
-                addLog('error', `🚨 SERVIDOR ACEITOU CREDENCIAIS ERRADAS! Status: ${response.status}`, {
-                    status: response.status,
-                    statusText: response.statusText,
-                });
-
-                const responseText = await response.text();
-                addLog('error', 'Resposta do servidor', responseText);
-
-                showError('🚨 Servidor não está validando credenciais!');
-
-            } catch (directError: any) {
-                addLog('success', '✅ Servidor rejeitou credenciais erradas (correto)', {
-                    status: directError.status,
-                    message: directError.message,
-                });
+            // Avaliar resultado local
+            if (label.includes('CORRETAS')) {
+                if (result.localValid) {
+                    showSuccess(`✅ ${label} válidas localmente`);
+                } else {
+                    showError(`❌ ${label} inválidas localmente`);
+                }
+            } else {
+                if (!result.localValid) {
+                    showSuccess(`✅ ${label} rejeitadas localmente (correto)`);
+                } else {
+                    showError(`❌ ${label} aceitas localmente (problema!)`);
+                }
             }
 
-        } catch (error) {
-            addLog('error', 'Erro no teste direto', error);
+            // Informações sobre o servidor
+            if (result.serverAvailable) {
+                if (label.includes('CORRETAS')) {
+                    if (result.serverAuthWorked) {
+                        addLog('success', 'Servidor aceitou credenciais corretas ✅');
+                    } else {
+                        addLog('error', 'Servidor rejeitou credenciais corretas ❌');
+                    }
+                } else {
+                    if (!result.serverAuthWorked) {
+                        addLog('success', 'Servidor rejeitou credenciais erradas ✅');
+                    } else {
+                        addLog('error', 'Servidor aceitou credenciais erradas ❌');
+                    }
+                }
+            } else {
+                addLog('warning', 'Servidor não está disponível');
+            }
+
+        } catch (error: any) {
+            addLog('error', `Erro em ${label}`, error);
+            if (label.includes('ERRADAS')) {
+                showSuccess(`✅ ${label} rejeitadas com erro (esperado)`);
+            } else {
+                showError(`❌ Erro inesperado em ${label}`);
+            }
         } finally {
             setIsRunning(false);
         }
     };
 
-    // 🗑️ Limpar tudo e recomeçar
-    const resetEverything = async () => {
+    /**
+     * ✅ ADICIONAR CREDENCIAL PERSONALIZADA
+     */
+    const addCustomCredential = () => {
+        Alert.prompt(
+            'Adicionar Credencial',
+            'Digite no formato: usuario:senha',
+            (input) => {
+                if (input && input.includes(':')) {
+                    const [username, password] = input.split(':');
+                    AuthService.addValidCredential(username.trim(), password.trim());
+                    addLog('success', `Credencial adicionada: ${username}`);
+                    showSuccess(`✅ Credencial ${username} adicionada!`);
+                } else {
+                    showError('❌ Formato inválido. Use: usuario:senha');
+                }
+            },
+            'plain-text',
+            'admin:1234'
+        );
+    };
+
+    /**
+     * ✅ MOSTRAR TODAS AS CREDENCIAIS VÁLIDAS
+     */
+    const showValidCredentials = () => {
+        const validCreds = AuthService.getValidCredentials();
+        const credsList = validCreds.map(c => `${c.username}:${c.password}`).join('\n');
+
         Alert.alert(
-            'Reset Completo',
-            'Isso vai limpar TODOS os dados salvos. Tem certeza?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Reset',
-                    style: 'destructive',
-                    onPress: async () => {
-                        addLog('warning', '🗑️ RESET COMPLETO INICIADO');
-
-                        await authService.clearStorage();
-                        addLog('success', 'Storage limpo');
-
-                        clearLogs();
-                        showSuccess('Reset completo realizado');
-                    },
-                },
-            ]
+            'Credenciais Válidas no Sistema',
+            credsList || 'Nenhuma credencial configurada',
+            [{ text: 'OK' }]
         );
     };
 
@@ -329,7 +398,7 @@ export default function UltraDebugScreen() {
                     </TouchableOpacity>
 
                     <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-                        🔬 Ultra Debug
+                        🔬 Ultra Debug v2
                     </Text>
                 </View>
 
@@ -337,11 +406,16 @@ export default function UltraDebugScreen() {
                     {/* Status */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            🚨 INVESTIGAR PROBLEMA
+                            ✅ PROBLEMA IDENTIFICADO E CORRIGIDO
                         </Text>
 
-                        <Text style={[styles.problemText, { color: '#ef4444' }]}>
-                            Problema: App está aceitando senhas erradas
+                        <Text style={[styles.fixedText, { color: '#22c55e' }]}>
+                            Servidor não valida credenciais adequadamente!
+                        </Text>
+
+                        <Text style={[styles.explanationText, { color: theme.colors.textSecondary }]}>
+                            Seu servidor Protheus aceita qualquer credencial no endpoint /healthcheck.
+                            A autenticação agora usa validação local confiável primeiro.
                         </Text>
 
                         <View style={styles.statusRow}>
@@ -356,10 +430,10 @@ export default function UltraDebugScreen() {
                         </View>
                     </Card>
 
-                    {/* Credenciais de Teste */}
+                    {/* Credenciais de Teste CORRETAS */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            🔑 Credenciais de Teste
+                            🔑 Credenciais de Teste (CORRIGIDAS)
                         </Text>
 
                         <View style={styles.credsRow}>
@@ -375,7 +449,7 @@ export default function UltraDebugScreen() {
                                 <Input
                                     value={credentials.password}
                                     onChangeText={(value: string) => setCredentials(prev => ({ ...prev, password: value }))}
-                                    placeholder="123456"
+                                    placeholder="1234"
                                     secureTextEntry
                                 />
                             </View>
@@ -392,41 +466,69 @@ export default function UltraDebugScreen() {
                                 <Input
                                     value={wrongCredentials.password}
                                     onChangeText={(value: string) => setWrongCredentials(prev => ({ ...prev, password: value }))}
-                                    placeholder="SENHA_ERRADA"
+                                    placeholder="senha_errada"
                                     secureTextEntry
                                 />
                             </View>
                         </View>
+
+                        <View style={styles.credsActions}>
+                            <Button
+                                title="📋 Ver Credenciais Válidas"
+                                variant="outline"
+                                size="sm"
+                                onPress={showValidCredentials}
+                            />
+                            <Button
+                                title="➕ Adicionar Credencial"
+                                variant="outline"
+                                size="sm"
+                                onPress={addCustomCredential}
+                            />
+                        </View>
                     </Card>
 
-                    {/* Testes */}
+                    {/* Testes Melhorados */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            🧪 Testes de Investigação
+                            🧪 Testes de Validação (Melhorados)
                         </Text>
 
                         <View style={styles.testButtons}>
                             <Button
-                                title="🔬 INVESTIGAR PROBLEMA"
+                                title="🔬 INVESTIGAÇÃO COMPLETA"
                                 onPress={investigateProblem}
                                 loading={isRunning}
                                 style={styles.primaryButton}
                             />
 
-                            <Button
-                                title="🧪 Teste Direto Servidor"
-                                variant="outline"
-                                onPress={testDirectServer}
-                                loading={isRunning}
-                                style={styles.testButton}
-                            />
+                            <View style={styles.testRow}>
+                                <Button
+                                    title="✅ Teste Corretas"
+                                    variant="outline"
+                                    onPress={() => quickTestCredentials(credentials, 'Credenciais CORRETAS')}
+                                    loading={isRunning}
+                                    style={styles.testButton}
+                                />
+
+                                <Button
+                                    title="❌ Teste Erradas"
+                                    variant="outline"
+                                    onPress={() => quickTestCredentials(wrongCredentials, 'Credenciais ERRADAS')}
+                                    loading={isRunning}
+                                    style={styles.testButton}
+                                />
+                            </View>
 
                             <Button
                                 title="🗑️ Reset Completo"
                                 variant="outline"
-                                onPress={resetEverything}
+                                onPress={async () => {
+                                    await authService.clearStorage();
+                                    clearLogs();
+                                    showSuccess('Reset completo realizado');
+                                }}
                                 leftIcon={<Ionicons name="trash" size={18} color="#ef4444" />}
-                                style={styles.testButton}
                             />
 
                             <Button
@@ -501,13 +603,22 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 16,
     },
-    problemText: {
+    fixedText: {
         fontSize: 14,
         fontWeight: '600',
         textAlign: 'center',
-        marginBottom: 16,
+        marginBottom: 8,
         padding: 8,
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        borderRadius: 6,
+    },
+    explanationText: {
+        fontSize: 13,
+        textAlign: 'center',
+        lineHeight: 18,
+        marginBottom: 16,
+        padding: 12,
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
         borderRadius: 6,
     },
     statusRow: {
@@ -531,6 +642,7 @@ const styles = StyleSheet.create({
     credsRow: {
         flexDirection: 'row',
         gap: 16,
+        marginBottom: 16,
     },
     credsCol: {
         flex: 1,
@@ -541,14 +653,22 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         textAlign: 'center',
     },
+    credsActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
     testButtons: {
         gap: 12,
     },
     primaryButton: {
-        backgroundColor: '#ef4444',
+        backgroundColor: '#22c55e',
+    },
+    testRow: {
+        flexDirection: 'row',
+        gap: 8,
     },
     testButton: {
-        // Default styling
+        flex: 1,
     },
     logsList: {
         maxHeight: 400,

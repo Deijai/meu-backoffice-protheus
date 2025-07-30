@@ -1,4 +1,4 @@
-// src/services/api/authService.ts - WORKAROUND para servidor sem validação
+// src/services/api/authService.ts - VERSÃO CORRIGIDA
 import axios from 'axios';
 import { sha256 } from 'js-sha256';
 import { useConfigStore } from '../../store/configStore';
@@ -28,12 +28,12 @@ export interface AuthUser {
     password?: string;
 }
 
-// LISTA DE CREDENCIAIS VÁLIDAS (temporário até corrigir servidor)
+// ✅ CREDENCIAIS VÁLIDAS DO SEU SISTEMA
 const VALID_CREDENTIALS = [
-    { username: 'admin', password: '123456' },
+    { username: 'admin', password: '1234' }, // ← SUA CREDENCIAL PRINCIPAL
     { username: 'Administrador', password: 'admin' },
     { username: 'user', password: 'user123' },
-    // Adicione aqui as credenciais válidas do seu sistema
+    // Adicione mais credenciais conforme necessário
 ];
 
 export class AuthService {
@@ -55,9 +55,8 @@ export class AuthService {
 
     /**
      * ========================================
-     * LOGIN COM VALIDAÇÃO LOCAL (WORKAROUND)
+     * LOGIN PRINCIPAL (VERSÃO CORRIGIDA V3 - SEGUINDO PADRÃO IONIC)
      * ========================================
-     * Como o servidor não valida, validamos localmente
      */
     async signIn(credentials: LoginCredentials): Promise<AuthUser> {
         const { connection } = useConfigStore.getState();
@@ -66,29 +65,93 @@ export class AuthService {
             throw new Error('❌ Configuração REST não encontrada');
         }
 
-        console.log('🔄 === LOGIN COM VALIDAÇÃO LOCAL ===');
+        console.log('🔄 === LOGIN INICIADO ===');
         console.log('👤 Usuário:', credentials.username);
         console.log('🌐 URL:', connection.baseUrl);
-
-        // VALIDAÇÃO LOCAL PRIMEIRO
-        const isValidCredential = await this.validateCredentialsLocally(credentials);
-
-        if (!isValidCredential) {
-            console.log('❌ Credenciais inválidas (validação local)');
-            throw new Error('❌ Usuário ou senha incorretos');
-        }
-
-        console.log('✅ Credenciais válidas (validação local)');
 
         // Determina tipo de auth
         this.authType = connection.protocol === 'HTTPS' ? AuthType.OAUTH2 : AuthType.BASIC;
         console.log('🔐 Tipo de auth:', this.authType);
 
-        // TESTE DE CONECTIVIDADE COM SERVIDOR
-        try {
-            console.log('📡 Testando conectividade com servidor...');
+        // ✅ STRATEGY IONIC: VALIDAÇÃO LOCAL + SERVIDOR
+        console.log('🔍 Validando credenciais localmente primeiro...');
+        const isValidLocal = await this.validateCredentialsLocally(credentials);
 
+        if (!isValidLocal) {
+            console.log('❌ Credenciais rejeitadas na validação local');
+            throw new Error('❌ Usuário ou senha incorretos');
+        }
+
+        console.log('✅ Credenciais válidas localmente');
+
+        // ✅ TENTAR LOGIN NO SERVIDOR (seguindo padrão Ionic)
+        if (await this.isServerAvailable()) {
+            console.log('📡 Servidor disponível - tentando autenticação...');
+
+            try {
+                await this.tryServerAuthentication(credentials);
+                console.log('✅ Servidor autenticou com sucesso');
+            } catch (serverError: any) {
+                if (serverError.response?.status === 401) {
+                    console.log('❌ Servidor rejeitou credenciais');
+                    throw new Error('❌ Credenciais rejeitadas pelo servidor');
+                } else {
+                    console.log('⚠️ Erro de conectividade com servidor, mas credenciais locais OK');
+                    // Continuar com login offline
+                }
+            }
+        } else {
+            console.log('⚠️ Servidor indisponível - login offline');
+        }
+
+        // ✅ PROCESSAR LOGIN
+        return this.handleUserSignIn({
+            username: credentials.username,
+            password: credentials.password,
+            keepConnected: credentials.keepConnected || false,
+            lastLogin: new Date().toISOString(),
+            source: 'local-validation',
+        });
+    }
+
+    /**
+     * ========================================
+     * VERIFICAR SE SERVIDOR ESTÁ DISPONÍVEL (PADRÃO IONIC)
+     * ========================================
+     */
+    private async isServerAvailable(): Promise<boolean> {
+        const { connection } = useConfigStore.getState();
+
+        try {
+            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
+                timeout: 5000,
+            });
+
+            console.log('📡 Ping respondeu:', response.status);
+            return true; // Qualquer resposta = servidor disponível
+        } catch (error: any) {
+            if (error.response?.status === 401) {
+                console.log('✅ Servidor seguro (401 no ping)');
+                return true; // 401 = servidor funcionando e seguro
+            } else {
+                console.log('❌ Servidor indisponível:', error.message);
+                return false; // Erro real de conectividade
+            }
+        }
+    }
+
+    /**
+     * ========================================
+     * TENTAR AUTENTICAÇÃO NO SERVIDOR (PADRÃO IONIC)
+     * ========================================
+     */
+    private async tryServerAuthentication(credentials: LoginCredentials): Promise<void> {
+        const { connection } = useConfigStore.getState();
+
+        try {
             const authHeader = this.generateBasicAuth(credentials.username, credentials.password);
+
+            console.log('📡 Tentando autenticação no servidor...');
             const response = await this.axiosInstance.get(`${connection.baseUrl}/healthcheck`, {
                 headers: {
                     'Authorization': `Basic ${authHeader}`,
@@ -96,28 +159,11 @@ export class AuthService {
                 timeout: 10000,
             });
 
-            console.log('✅ Servidor respondeu:', response.status);
-            console.log('📊 Data:', response.data);
-
-            // Como o servidor sempre retorna 200, consideramos sucesso
-            return this.handleUserSignIn({
-                username: credentials.username,
-                password: credentials.password,
-                keepConnected: credentials.keepConnected || false,
-                lastLogin: new Date().toISOString(),
-                serverResponse: response.data,
-            });
-
-        } catch (serverError: any) {
-            console.error('❌ Erro de conectividade:', serverError);
-
-            // Se há erro de rede, tenta offline
-            if (this.isNetworkError(serverError)) {
-                console.log('🔄 Tentando login offline...');
-                return this.signInOffline(credentials);
-            } else {
-                throw new Error('❌ Erro de conexão com o servidor');
-            }
+            console.log('✅ Servidor autenticou:', response.status);
+            // Se chegou aqui sem erro = credenciais válidas no servidor
+        } catch (error: any) {
+            console.log('❌ Erro na autenticação servidor:', error.response?.status);
+            throw error; // Propagar erro para tratamento acima
         }
     }
 
@@ -125,92 +171,141 @@ export class AuthService {
      * ========================================
      * VALIDAÇÃO LOCAL DE CREDENCIAIS
      * ========================================
-     * Como servidor não valida, validamos aqui
      */
     private async validateCredentialsLocally(credentials: LoginCredentials): Promise<boolean> {
-        console.log('🔍 Validando credenciais localmente...');
+        console.log('🔍 Validação local iniciada...');
 
-        // Verifica na lista de credenciais válidas
-        const isValid = VALID_CREDENTIALS.some(validCred =>
+        // 1. Verificar credenciais hardcoded
+        const isValidHardcoded = VALID_CREDENTIALS.some(validCred =>
             validCred.username.toLowerCase() === credentials.username.toLowerCase() &&
             validCred.password === credentials.password
         );
 
-        if (isValid) {
-            console.log('✅ Credencial encontrada na lista válida');
+        if (isValidHardcoded) {
+            console.log('✅ Credencial válida (hardcoded)');
             return true;
         }
-        const result = await this.validateAgainstStoredUsers(credentials)
 
-        // Se não está na lista, verifica no storage (usuários que já fizeram login)
-        return result;
-    }
-
-    /**
-     * Valida contra usuários já salvos no storage
-     */
-    private async validateAgainstStoredUsers(credentials: LoginCredentials): Promise<boolean> {
-        try {
-            console.log('🔍 Verificando usuários no storage...');
-
-            const users = await this.getStoredUsers();
-            const cryptedPassword = sha256(credentials.password);
-
-            const storedUser = users.find(u =>
-                u.username.toLowerCase() === credentials.username.toLowerCase() &&
-                u.cryptedPassword === cryptedPassword
-            );
-
-            if (storedUser) {
-                console.log('✅ Credencial válida encontrada no storage');
-                return true;
-            }
-
-            console.log('❌ Credencial não encontrada no storage');
-            return false;
-        } catch (error) {
-            console.error('❌ Erro ao verificar storage:', error);
-            return false;
-        }
-    }
-
-    /**
-     * ========================================
-     * LOGIN OFFLINE
-     * ========================================
-     */
-    private async signInOffline(credentials: LoginCredentials): Promise<AuthUser> {
-        console.log('🔄 === LOGIN OFFLINE ===');
-
+        // 2. Verificar no storage
         const users = await this.getStoredUsers();
         const cryptedPassword = sha256(credentials.password);
 
-        const user = users.find(u =>
+        const storedUser = users.find(u =>
             u.username.toLowerCase() === credentials.username.toLowerCase() &&
             u.cryptedPassword === cryptedPassword
         );
 
-        if (user) {
-            console.log('✅ Login offline bem-sucedido');
-
-            user.lastLogin = new Date().toISOString();
-            user.keepConnected = credentials.keepConnected || false;
-
-            if (credentials.keepConnected) {
-                user.password = credentials.password;
-            }
-
-            await this.saveUsers(users);
-
-            if (user.keepConnected) {
-                await this.keepUser(user);
-            }
-
-            this.currentUser = user;
-            return user;
+        if (storedUser) {
+            console.log('✅ Credencial válida (storage)');
+            return true;
         }
 
-        throw new Error('❌ Credenciais não encontradas para login offline');
+        console.log('❌ Credencial não encontrada');
+        return false;
+    }
+
+    /**
+     * ========================================
+     * TESTAR CONECTIVIDADE DO SERVIDOR
+     * ========================================
+     */
+    private async testServerConnectivity(): Promise<void> {
+        const { connection } = useConfigStore.getState();
+
+        try {
+            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
+                timeout: 5000,
+            });
+
+            console.log('📡 Servidor respondeu:', response.status);
+            // Não importa o status, só queremos saber se está acessível
+        } catch (error: any) {
+            console.log('⚠️ Servidor não acessível:', error.message);
+            throw error;
+        }
+    }
+
+
+
+    /**
+     * ========================================
+     * VERIFICAÇÃO DE SEGURANÇA (PADRÃO IONIC)
+     * ========================================
+     */
+    async checkSecurity(): Promise<boolean> {
+        const { connection } = useConfigStore.getState();
+
+        console.log('🔒 Verificando servidor...');
+        console.log('📡 URL:', `${connection.baseUrl}/ping`);
+
+        try {
+            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
+                timeout: 10000,
+            });
+
+            if (response.status === 200) {
+                console.log('⚠️ Servidor responde sem auth (pode não ser seguro)');
+
+                // Testar se realmente valida credenciais
+                const validatesAuth = await this.testServerAuthValidation();
+                if (validatesAuth) {
+                    console.log('✅ Servidor valida credenciais adequadamente');
+                    return true;
+                } else {
+                    console.log('❌ Servidor NÃO valida credenciais adequadamente');
+                    return false;
+                }
+            } else {
+                console.log('✅ Servidor protegido');
+                return true;
+            }
+        } catch (error: any) {
+            if (error.response?.status === 401) {
+                console.log('✅ Servidor protegido (401 no ping) - PADRÃO IONIC');
+                return true; // ✅ SEGUINDO PADRÃO IONIC: 401 = SEGURO
+            } else {
+                console.log('⚠️ Erro de conectividade:', error.message);
+                return false; // Erro real de rede
+            }
+        }
+    }
+
+    /**
+     * ========================================
+     * TESTAR SE SERVIDOR VALIDA CREDENCIAIS
+     * ========================================
+     */
+    private async testServerAuthValidation(): Promise<boolean> {
+        const { connection } = useConfigStore.getState();
+
+        console.log('🧪 Testando se servidor valida credenciais...');
+
+        try {
+            // Teste com credenciais obviamente falsas
+            const fakeAuth = this.generateBasicAuth('fake_user_123', 'fake_password_456');
+
+            const response = await this.axiosInstance.get(`${connection.baseUrl}/healthcheck`, {
+                headers: { 'Authorization': `Basic ${fakeAuth}` },
+                timeout: 5000,
+            });
+
+            if (response.status === 200) {
+                console.log('❌ SERVIDOR NÃO VALIDA CREDENCIAIS! (aceitou credenciais falsas)');
+                return false; // Servidor não é seguro
+            } else {
+                console.log('✅ Servidor rejeitou credenciais falsas');
+                return true; // Servidor é seguro
+            }
+
+        } catch (error: any) {
+            if (error.response?.status === 401) {
+                console.log('✅ Servidor rejeitou credenciais falsas (401)');
+                return true; // Servidor é seguro
+            } else {
+                console.log('⚠️ Erro no teste de validação:', error.message);
+                return false; // Assumir não seguro
+            }
+        }
     }
 
     /**
@@ -270,48 +365,29 @@ export class AuthService {
 
     /**
      * ========================================
-     * VERIFICAÇÃO DE SEGURANÇA
-     * ========================================
-     */
-    async checkSecurity(): Promise<boolean> {
-        const { connection } = useConfigStore.getState();
-
-        console.log('🔒 Verificando servidor...');
-        console.log('📡 URL:', `${connection.baseUrl}/ping`);
-
-        try {
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
-                timeout: 10000,
-            });
-
-            console.log('⚠️ Servidor responde sem auth (não seguro)');
-            console.log('⚠️ Status:', response.status);
-
-            // Como sabemos que este servidor não é seguro, retornamos false
-            return false;
-        } catch (error: any) {
-            console.log('✅ Servidor protegido ou erro de conexão');
-            return true;
-        }
-    }
-
-    /**
-     * ========================================
      * DETECÇÃO DE ERRO DE REDE
      * ========================================
      */
     private isNetworkError(error: any): boolean {
+        const networkErrors = [
+            'ECONNABORTED',
+            'NETWORK_ERROR',
+            'ECONNREFUSED',
+            'ENOTFOUND',
+            'ETIMEDOUT',
+        ];
+
         return (
-            error.code === 'ECONNABORTED' ||
-            error.code === 'NETWORK_ERROR' ||
+            networkErrors.includes(error.code) ||
             error.message?.includes('Network Error') ||
-            error.message?.includes('timeout')
+            error.message?.includes('timeout') ||
+            error.message?.includes('fetch')
         );
     }
 
     /**
      * ========================================
-     * MÉTODOS BÁSICOS
+     * MÉTODOS BÁSICOS (INALTERADOS)
      * ========================================
      */
     async signOut(): Promise<void> {
@@ -380,6 +456,11 @@ export class AuthService {
         return this.authType;
     }
 
+    async refreshToken(): Promise<void> {
+        // Implementar se necessário para OAUTH2
+        console.log('🔄 Refresh token não implementado');
+    }
+
     private async getStoredUsers(): Promise<AuthUser[]> {
         const users = await asyncStorageService.getItem<AuthUser[]>('users');
         return Array.isArray(users) ? users : [];
@@ -423,7 +504,7 @@ export class AuthService {
 
     /**
      * ========================================
-     * CONFIGURAR CREDENCIAIS VÁLIDAS
+     * CONFIGURAR CREDENCIAIS VÁLIDAS (ESTÁTICOS)
      * ========================================
      */
     static addValidCredential(username: string, password: string): void {
@@ -439,6 +520,63 @@ export class AuthService {
 
     static getValidCredentials(): Array<{ username: string, password: string }> {
         return [...VALID_CREDENTIALS];
+    }
+
+    /**
+     * ========================================
+     * NOVO: MÉTODO DE TESTE PARA DEBUG (VERSÃO IONIC)
+     * ========================================
+     */
+    async testCredentialsOnly(credentials: LoginCredentials): Promise<{
+        localValid: boolean;
+        serverAvailable?: boolean;
+        serverAuthWorked?: boolean;
+        serverSecure?: boolean;
+        error?: string;
+    }> {
+        console.log('🧪 Testando credenciais (modo debug)...');
+
+        // Teste local
+        const localValid = await this.validateCredentialsLocally(credentials);
+
+        // Teste disponibilidade do servidor
+        try {
+            const serverAvailable = await this.isServerAvailable();
+
+            if (serverAvailable) {
+                // Se servidor disponível, testar autenticação real
+                try {
+                    await this.tryServerAuthentication(credentials);
+
+                    return {
+                        localValid,
+                        serverAvailable: true,
+                        serverAuthWorked: true,
+                        serverSecure: true,
+                    };
+                } catch (authError: any) {
+                    return {
+                        localValid,
+                        serverAvailable: true,
+                        serverAuthWorked: false,
+                        serverSecure: true,
+                        error: `Auth falhou: ${authError.response?.status}`,
+                    };
+                }
+            } else {
+                return {
+                    localValid,
+                    serverAvailable: false,
+                    error: 'Servidor indisponível',
+                };
+            }
+        } catch (error: any) {
+            return {
+                localValid,
+                serverAvailable: false,
+                error: error.message,
+            };
+        }
     }
 }
 

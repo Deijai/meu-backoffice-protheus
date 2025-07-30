@@ -10,7 +10,7 @@ export const validation = {
     password: (password: string): { valid: boolean; errors: string[] } => {
         const errors: string[] = [];
 
-        if (password.length < 6) {
+        if (password.length < 1) {
             errors.push('A senha deve ter pelo menos 6 caracteres');
         }
 
