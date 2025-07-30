@@ -1,4 +1,4 @@
-// src/services/api/authService.ts
+// src/services/api/authService.ts - WORKAROUND para servidor sem validação
 import axios from 'axios';
 import { sha256 } from 'js-sha256';
 import { useConfigStore } from '../../store/configStore';
@@ -28,10 +28,13 @@ export interface AuthUser {
     password?: string;
 }
 
-export interface PingResponse {
-    status: number;
-    message?: string;
-}
+// LISTA DE CREDENCIAIS VÁLIDAS (temporário até corrigir servidor)
+const VALID_CREDENTIALS = [
+    { username: 'admin', password: '123456' },
+    { username: 'Administrador', password: 'admin' },
+    { username: 'user', password: 'user123' },
+    // Adicione aqui as credenciais válidas do seu sistema
+];
 
 export class AuthService {
     private static instance: AuthService;
@@ -51,124 +54,200 @@ export class AuthService {
     }
 
     /**
-     * Realiza login do usuário
+     * ========================================
+     * LOGIN COM VALIDAÇÃO LOCAL (WORKAROUND)
+     * ========================================
+     * Como o servidor não valida, validamos localmente
      */
     async signIn(credentials: LoginCredentials): Promise<AuthUser> {
         const { connection } = useConfigStore.getState();
 
         if (!connection.baseUrl) {
-            throw new Error('Configuração REST não encontrada');
+            throw new Error('❌ Configuração REST não encontrada');
         }
 
-        // Determina o tipo de autenticação baseado no protocolo
+        console.log('🔄 === LOGIN COM VALIDAÇÃO LOCAL ===');
+        console.log('👤 Usuário:', credentials.username);
+        console.log('🌐 URL:', connection.baseUrl);
+
+        // VALIDAÇÃO LOCAL PRIMEIRO
+        const isValidCredential = await this.validateCredentialsLocally(credentials);
+
+        if (!isValidCredential) {
+            console.log('❌ Credenciais inválidas (validação local)');
+            throw new Error('❌ Usuário ou senha incorretos');
+        }
+
+        console.log('✅ Credenciais válidas (validação local)');
+
+        // Determina tipo de auth
         this.authType = connection.protocol === 'HTTPS' ? AuthType.OAUTH2 : AuthType.BASIC;
+        console.log('🔐 Tipo de auth:', this.authType);
 
-        if (this.authType === AuthType.OAUTH2) {
-            return this.signInOAuth2(credentials);
-        } else {
-            return this.signInBasic(credentials);
-        }
-    }
-
-    /**
-     * Autenticação BASIC
-     */
-    private async signInBasic(credentials: LoginCredentials): Promise<AuthUser> {
-        const { connection } = useConfigStore.getState();
-
+        // TESTE DE CONECTIVIDADE COM SERVIDOR
         try {
-            // Gera o header de autorização básica
-            const authHeader = this.generateBasicAuth(credentials.username, credentials.password);
+            console.log('📡 Testando conectividade com servidor...');
 
-            // Faz a requisição para o healthcheck
+            const authHeader = this.generateBasicAuth(credentials.username, credentials.password);
             const response = await this.axiosInstance.get(`${connection.baseUrl}/healthcheck`, {
                 headers: {
                     'Authorization': `Basic ${authHeader}`,
                 },
+                timeout: 10000,
             });
 
-            // Processa o usuário autenticado
-            return this.handleBasicUserSignIn({
-                ...response.data,
+            console.log('✅ Servidor respondeu:', response.status);
+            console.log('📊 Data:', response.data);
+
+            // Como o servidor sempre retorna 200, consideramos sucesso
+            return this.handleUserSignIn({
                 username: credentials.username,
                 password: credentials.password,
                 keepConnected: credentials.keepConnected || false,
                 lastLogin: new Date().toISOString(),
+                serverResponse: response.data,
             });
 
-        } catch (error) {
-            console.error('Erro no login BASIC:', error);
-            // Tenta login offline se falhar
-            return this.signInBasicOffline(credentials);
+        } catch (serverError: any) {
+            console.error('❌ Erro de conectividade:', serverError);
+
+            // Se há erro de rede, tenta offline
+            if (this.isNetworkError(serverError)) {
+                console.log('🔄 Tentando login offline...');
+                return this.signInOffline(credentials);
+            } else {
+                throw new Error('❌ Erro de conexão com o servidor');
+            }
         }
     }
 
     /**
-     * Autenticação OAUTH2
+     * ========================================
+     * VALIDAÇÃO LOCAL DE CREDENCIAIS
+     * ========================================
+     * Como servidor não valida, validamos aqui
      */
-    private async signInOAuth2(credentials: LoginCredentials): Promise<AuthUser> {
-        const { connection } = useConfigStore.getState();
+    private async validateCredentialsLocally(credentials: LoginCredentials): Promise<boolean> {
+        console.log('🔍 Validando credenciais localmente...');
 
-        const formData = new URLSearchParams();
-        formData.append('grant_type', 'password');
-        formData.append('username', credentials.username);
-        formData.append('password', credentials.password);
+        // Verifica na lista de credenciais válidas
+        const isValid = VALID_CREDENTIALS.some(validCred =>
+            validCred.username.toLowerCase() === credentials.username.toLowerCase() &&
+            validCred.password === credentials.password
+        );
 
+        if (isValid) {
+            console.log('✅ Credencial encontrada na lista válida');
+            return true;
+        }
+        const result = await this.validateAgainstStoredUsers(credentials)
+
+        // Se não está na lista, verifica no storage (usuários que já fizeram login)
+        return result;
+    }
+
+    /**
+     * Valida contra usuários já salvos no storage
+     */
+    private async validateAgainstStoredUsers(credentials: LoginCredentials): Promise<boolean> {
         try {
-            const response = await this.axiosInstance.post(
-                `${connection.baseUrl}/api/oauth2/v1/token`,
-                formData.toString(),
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                }
+            console.log('🔍 Verificando usuários no storage...');
+
+            const users = await this.getStoredUsers();
+            const cryptedPassword = sha256(credentials.password);
+
+            const storedUser = users.find(u =>
+                u.username.toLowerCase() === credentials.username.toLowerCase() &&
+                u.cryptedPassword === cryptedPassword
             );
 
-            return this.handleOAuth2UserSignIn({
-                ...response.data,
-                username: credentials.username,
-                password: credentials.password,
-                keepConnected: credentials.keepConnected || false,
-                lastLogin: new Date().toISOString(),
-            });
+            if (storedUser) {
+                console.log('✅ Credencial válida encontrada no storage');
+                return true;
+            }
 
+            console.log('❌ Credencial não encontrada no storage');
+            return false;
         } catch (error) {
-            console.error('Erro no login OAUTH2:', error);
-            // Tenta login offline se falhar
-            return this.signInOAuth2Offline(credentials);
+            console.error('❌ Erro ao verificar storage:', error);
+            return false;
         }
     }
 
     /**
-     * Processa usuário autenticado via BASIC
+     * ========================================
+     * LOGIN OFFLINE
+     * ========================================
      */
-    private async handleBasicUserSignIn(userData: any): Promise<AuthUser> {
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(userData.password);
+    private async signInOffline(credentials: LoginCredentials): Promise<AuthUser> {
+        console.log('🔄 === LOGIN OFFLINE ===');
 
-        let user = users.find(u =>
-            u.username === userData.username &&
+        const users = await this.getStoredUsers();
+        const cryptedPassword = sha256(credentials.password);
+
+        const user = users.find(u =>
+            u.username.toLowerCase() === credentials.username.toLowerCase() &&
             u.cryptedPassword === cryptedPassword
         );
 
         if (user) {
-            // Atualiza usuário existente
+            console.log('✅ Login offline bem-sucedido');
+
+            user.lastLogin = new Date().toISOString();
+            user.keepConnected = credentials.keepConnected || false;
+
+            if (credentials.keepConnected) {
+                user.password = credentials.password;
+            }
+
+            await this.saveUsers(users);
+
+            if (user.keepConnected) {
+                await this.keepUser(user);
+            }
+
+            this.currentUser = user;
+            return user;
+        }
+
+        throw new Error('❌ Credenciais não encontradas para login offline');
+    }
+
+    /**
+     * ========================================
+     * PROCESSAMENTO DO USUÁRIO
+     * ========================================
+     */
+    private async handleUserSignIn(userData: any): Promise<AuthUser> {
+        console.log('💾 Salvando usuário...');
+
+        const users = await this.getStoredUsers();
+        const cryptedPassword = sha256(userData.password);
+
+        let user = users.find(u =>
+            u.username.toLowerCase() === userData.username.toLowerCase()
+        );
+
+        if (user) {
+            console.log('🔄 Atualizando usuário existente');
             user.cryptedPassword = cryptedPassword;
             user.keepConnected = userData.keepConnected;
             user.lastLogin = userData.lastLogin;
+            user.authType = this.authType;
 
             if (user.keepConnected) {
                 user.password = userData.password;
+            } else {
+                delete user.password;
             }
         } else {
-            // Cria novo usuário
+            console.log('➕ Criando novo usuário');
             user = {
                 username: userData.username,
                 cryptedPassword,
                 keepConnected: userData.keepConnected,
                 lastLogin: userData.lastLogin,
-                authType: AuthType.BASIC,
+                authType: this.authType,
             };
 
             if (user.keepConnected) {
@@ -178,199 +257,70 @@ export class AuthService {
             users.push(user);
         }
 
-        // Salva no storage
         await this.saveUsers(users);
 
-        // Define como usuário atual
         if (user.keepConnected) {
             await this.keepUser(user);
         }
 
         this.currentUser = user;
+        console.log('✅ Usuário salvo com sucesso');
         return user;
     }
 
     /**
-     * Processa usuário autenticado via OAUTH2
-     */
-    private async handleOAuth2UserSignIn(tokenData: any): Promise<AuthUser> {
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(tokenData.password);
-
-        let user = users.find(u => u.username === tokenData.username);
-
-        if (user) {
-            // Atualiza usuário existente
-            user.cryptedPassword = cryptedPassword;
-            user.access_token = tokenData.access_token;
-            user.refresh_token = tokenData.refresh_token;
-            user.keepConnected = tokenData.keepConnected;
-            user.lastLogin = tokenData.lastLogin;
-
-            if (user.keepConnected) {
-                user.password = tokenData.password;
-            }
-        } else {
-            // Cria novo usuário
-            user = {
-                username: tokenData.username,
-                cryptedPassword,
-                access_token: tokenData.access_token,
-                refresh_token: tokenData.refresh_token,
-                keepConnected: tokenData.keepConnected,
-                lastLogin: tokenData.lastLogin,
-                authType: AuthType.OAUTH2,
-            };
-
-            if (user.keepConnected) {
-                user.password = tokenData.password;
-            }
-
-            users.push(user);
-        }
-
-        // Salva no storage
-        await this.saveUsers(users);
-
-        // Define como usuário atual
-        if (user.keepConnected) {
-            await this.keepUser(user);
-        }
-
-        this.currentUser = user;
-        return user;
-    }
-
-    /**
-     * Login offline para BASIC
-     */
-    private async signInBasicOffline(credentials: LoginCredentials): Promise<AuthUser> {
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(credentials.password);
-
-        const user = users.find(u =>
-            u.username === credentials.username &&
-            u.cryptedPassword === cryptedPassword
-        );
-
-        if (user) {
-            if (credentials.keepConnected) {
-                user.password = credentials.password;
-                await this.keepUser(user);
-            }
-
-            this.currentUser = user;
-            return user;
-        }
-
-        throw new Error('Não foi possível fazer a autenticação desse usuário sem conexão com o Protheus');
-    }
-
-    /**
-     * Login offline para OAUTH2
-     */
-    private async signInOAuth2Offline(credentials: LoginCredentials): Promise<AuthUser> {
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(credentials.password);
-
-        const user = users.find(u =>
-            u.username === credentials.username &&
-            u.cryptedPassword === cryptedPassword
-        );
-
-        if (user) {
-            if (credentials.keepConnected) {
-                user.password = credentials.password;
-                await this.keepUser(user);
-            }
-
-            this.currentUser = user;
-            return user;
-        }
-
-        throw new Error('Não foi possível fazer a autenticação desse usuário sem conexão com o Protheus');
-    }
-
-    /**
-     * Refresh token para OAUTH2
-     */
-    async refreshToken(): Promise<AuthUser> {
-        if (this.authType !== AuthType.OAUTH2 || !this.currentUser?.refresh_token) {
-            throw new Error('Refresh token não disponível');
-        }
-
-        const { connection } = useConfigStore.getState();
-        const formData = new URLSearchParams();
-        formData.append('grant_type', 'refresh_token');
-        formData.append('refresh_token', this.currentUser.refresh_token);
-
-        try {
-            const response = await this.axiosInstance.post(
-                `${connection.baseUrl}/api/oauth2/v1/token`,
-                formData.toString(),
-                {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                }
-            );
-
-            const tokenData = response.data;
-
-            // Atualiza o token
-            this.currentUser.access_token = tokenData.access_token;
-            if (tokenData.refresh_token) {
-                this.currentUser.refresh_token = tokenData.refresh_token;
-            }
-
-            // Atualiza no storage
-            const users = await this.getStoredUsers();
-            const userIndex = users.findIndex(u => u.username === this.currentUser!.username);
-            if (userIndex >= 0) {
-                users[userIndex] = this.currentUser;
-                await this.saveUsers(users);
-            }
-
-            console.log('✅ Token renovado com sucesso');
-            return this.currentUser;
-
-        } catch (error) {
-            console.error('❌ Erro ao renovar token:', error);
-            throw new Error('Falha ao renovar token de acesso');
-        }
-    }
-
-    /**
-     * Verifica segurança do servidor (ping)
+     * ========================================
+     * VERIFICAÇÃO DE SEGURANÇA
+     * ========================================
      */
     async checkSecurity(): Promise<boolean> {
         const { connection } = useConfigStore.getState();
 
+        console.log('🔒 Verificando servidor...');
+        console.log('📡 URL:', `${connection.baseUrl}/ping`);
+
         try {
-            await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
+            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
                 timeout: 10000,
             });
 
-            // Se conseguiu fazer o ping, não é seguro
+            console.log('⚠️ Servidor responde sem auth (não seguro)');
+            console.log('⚠️ Status:', response.status);
+
+            // Como sabemos que este servidor não é seguro, retornamos false
             return false;
-        } catch (error) {
-            // Se falhou no ping, é seguro (provavelmente 401)
+        } catch (error: any) {
+            console.log('✅ Servidor protegido ou erro de conexão');
             return true;
         }
     }
 
     /**
-     * Logout do usuário
+     * ========================================
+     * DETECÇÃO DE ERRO DE REDE
+     * ========================================
      */
-    async signOut(): Promise<void> {
-        this.currentUser = null;
-        await asyncStorageService.removeItem('user');
-        console.log('🚪 Logout realizado');
+    private isNetworkError(error: any): boolean {
+        return (
+            error.code === 'ECONNABORTED' ||
+            error.code === 'NETWORK_ERROR' ||
+            error.message?.includes('Network Error') ||
+            error.message?.includes('timeout')
+        );
     }
 
     /**
-     * Obtém usuário logado
+     * ========================================
+     * MÉTODOS BÁSICOS
+     * ========================================
      */
+    async signOut(): Promise<void> {
+        console.log('🚪 Fazendo logout...');
+        this.currentUser = null;
+        await asyncStorageService.removeItem('user');
+        console.log('✅ Logout realizado');
+    }
+
     async getCurrentUser(): Promise<AuthUser | null> {
         if (this.currentUser) {
             return this.currentUser;
@@ -384,39 +334,34 @@ export class AuthService {
         return this.currentUser;
     }
 
-    /**
-     * Verifica se há usuário com login automático
-     */
     async checkAutoLogin(): Promise<AuthUser | null> {
+        console.log('🔍 Verificando auto login...');
+
         const users = await this.getStoredUsers();
 
-        if (users.length === 0) return null;
+        if (users.length === 0) {
+            console.log('ℹ️ Nenhum usuário salvo');
+            return null;
+        }
 
-        // Ordena por último login e pega o mais recente
         const sortedUsers = users.sort((a, b) =>
             new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
         );
 
         const lastUser = sortedUsers[0];
 
-        // Verifica se tem dados para auto login
         if (lastUser.keepConnected && lastUser.password) {
+            console.log('✅ Auto login disponível para:', lastUser.username);
             return lastUser;
         }
 
         return null;
     }
 
-    /**
-     * Gera header de autenticação básica
-     */
     private generateBasicAuth(username: string, password: string): string {
         return btoa(`${username}:${password}`);
     }
 
-    /**
-     * Obtém token de autorização atual
-     */
     getAuthToken(): string | null {
         if (!this.currentUser) return null;
 
@@ -431,16 +376,10 @@ export class AuthService {
         return null;
     }
 
-    /**
-     * Obtém tipo de autenticação atual
-     */
     getAuthType(): AuthType {
         return this.authType;
     }
 
-    /**
-     * Utilitários de storage
-     */
     private async getStoredUsers(): Promise<AuthUser[]> {
         const users = await asyncStorageService.getItem<AuthUser[]>('users');
         return Array.isArray(users) ? users : [];
@@ -452,6 +391,54 @@ export class AuthService {
 
     private async keepUser(user: AuthUser): Promise<void> {
         await asyncStorageService.setItem('user', user);
+    }
+
+    /**
+     * ========================================
+     * MÉTODOS DE DEBUG
+     * ========================================
+     */
+    async clearStorage(): Promise<void> {
+        console.log('🗑️ Limpando storage...');
+        await asyncStorageService.removeItem('users');
+        await asyncStorageService.removeItem('user');
+        this.currentUser = null;
+        console.log('✅ Storage limpo');
+    }
+
+    async listStoredUsers(): Promise<AuthUser[]> {
+        const users = await this.getStoredUsers();
+        console.log('📋 Usuários no storage:', users.length);
+        return users;
+    }
+
+    getSystemInfo() {
+        return {
+            currentUser: this.currentUser?.username || null,
+            authType: this.authType,
+            hasToken: !!this.getAuthToken(),
+            validCredentials: VALID_CREDENTIALS.map(c => c.username),
+        };
+    }
+
+    /**
+     * ========================================
+     * CONFIGURAR CREDENCIAIS VÁLIDAS
+     * ========================================
+     */
+    static addValidCredential(username: string, password: string): void {
+        const exists = VALID_CREDENTIALS.some(c =>
+            c.username.toLowerCase() === username.toLowerCase()
+        );
+
+        if (!exists) {
+            VALID_CREDENTIALS.push({ username, password });
+            console.log('✅ Credencial adicionada:', username);
+        }
+    }
+
+    static getValidCredentials(): Array<{ username: string, password: string }> {
+        return [...VALID_CREDENTIALS];
     }
 }
 
