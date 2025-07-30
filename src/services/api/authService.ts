@@ -1,11 +1,9 @@
-// src/services/api/authService.ts - VERSÃO CORRIGIDA
+// src/services/api/authService.ts - VERSÃO OAUTH2 PROTHEUS COM AXIOS
 import axios from 'axios';
-import { sha256 } from 'js-sha256';
 import { useConfigStore } from '../../store/configStore';
 import { asyncStorageService } from '../storage/asyncStorage';
 
 export enum AuthType {
-    BASIC = 'BASIC',
     OAUTH2 = 'OAUTH2'
 }
 
@@ -17,32 +15,27 @@ export interface LoginCredentials {
 
 export interface AuthUser {
     username: string;
-    cryptedPassword: string;
     keepConnected: boolean;
     lastLogin: string;
     authType: AuthType;
-    tenantId?: string;
-    establishment?: any;
-    access_token?: string;
+    access_token: string;
     refresh_token?: string;
-    password?: string;
+    token_type: string;
+    expires_in: number;
+    tokenExpiresAt: string;
 }
 
-// ✅ CREDENCIAIS VÁLIDAS DO SEU SISTEMA
-const VALID_CREDENTIALS = [
-    { username: 'admin', password: '1234' }, // ← SUA CREDENCIAL PRINCIPAL
-    { username: 'Administrador', password: 'admin' },
-    { username: 'user', password: 'user123' },
-    // Adicione mais credenciais conforme necessário
-];
+export interface OAuth2Response {
+    access_token: string;
+    refresh_token?: string;
+    token_type: string;
+    expires_in: number;
+    scope?: string;
+}
 
 export class AuthService {
     private static instance: AuthService;
     private currentUser: AuthUser | null = null;
-    private authType: AuthType = AuthType.BASIC;
-    private axiosInstance = axios.create({
-        timeout: 30000,
-    });
 
     private constructor() { }
 
@@ -54,9 +47,7 @@ export class AuthService {
     }
 
     /**
-     * ========================================
-     * LOGIN PRINCIPAL (VERSÃO CORRIGIDA V3 - SEGUINDO PADRÃO IONIC)
-     * ========================================
+     * LOGIN PRINCIPAL usando OAuth2 do Protheus com axios
      */
     async signIn(credentials: LoginCredentials): Promise<AuthUser> {
         const { connection } = useConfigStore.getState();
@@ -65,344 +56,326 @@ export class AuthService {
             throw new Error('❌ Configuração REST não encontrada');
         }
 
-        console.log('🔄 === LOGIN INICIADO ===');
+        console.log('🔄 === LOGIN OAUTH2 PROTHEUS INICIADO ===');
         console.log('👤 Usuário:', credentials.username);
-        console.log('🌐 URL:', connection.baseUrl);
+        console.log('🌐 URL Base:', connection.baseUrl);
 
-        // Determina tipo de auth
-        this.authType = connection.protocol === 'HTTPS' ? AuthType.OAUTH2 : AuthType.BASIC;
-        console.log('🔐 Tipo de auth:', this.authType);
+        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+        console.log('🔐 URL OAuth:', oauthUrl);
 
-        // ✅ STRATEGY IONIC: VALIDAÇÃO LOCAL + SERVIDOR
-        console.log('🔍 Validando credenciais localmente primeiro...');
-        const isValidLocal = await this.validateCredentialsLocally(credentials);
+        try {
+            const response = await axios.post(oauthUrl, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'username': credentials.username,
+                    'password': credentials.password,
+                },
+                timeout: 15000,
+                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
+            });
 
-        if (!isValidLocal) {
-            console.log('❌ Credenciais rejeitadas na validação local');
-            throw new Error('❌ Usuário ou senha incorretos');
-        }
+            console.log('📡 Status da resposta:', response.status);
 
-        console.log('✅ Credenciais válidas localmente');
-
-        // ✅ TENTAR LOGIN NO SERVIDOR (seguindo padrão Ionic)
-        if (await this.isServerAvailable()) {
-            console.log('📡 Servidor disponível - tentando autenticação...');
-
-            try {
-                await this.tryServerAuthentication(credentials);
-                console.log('✅ Servidor autenticou com sucesso');
-            } catch (serverError: any) {
-                if (serverError.response?.status === 401) {
-                    console.log('❌ Servidor rejeitou credenciais');
-                    throw new Error('❌ Credenciais rejeitadas pelo servidor');
+            if (response.status !== 200) {
+                if (response.status === 401) {
+                    console.log('❌ Credenciais rejeitadas pelo servidor');
+                    throw new Error('❌ Usuário ou senha incorretos');
+                } else if (response.status === 400) {
+                    console.log('❌ Requisição inválida');
+                    throw new Error('❌ Dados de login inválidos');
                 } else {
-                    console.log('⚠️ Erro de conectividade com servidor, mas credenciais locais OK');
-                    // Continuar com login offline
+                    console.log('❌ Erro no servidor:', response.status);
+                    throw new Error(`❌ Erro no servidor: ${response.status}`);
                 }
             }
-        } else {
-            console.log('⚠️ Servidor indisponível - login offline');
-        }
 
-        // ✅ PROCESSAR LOGIN
-        return this.handleUserSignIn({
-            username: credentials.username,
-            password: credentials.password,
-            keepConnected: credentials.keepConnected || false,
-            lastLogin: new Date().toISOString(),
-            source: 'local-validation',
-        });
-    }
+            const oauthData: OAuth2Response = response.data;
+            console.log('✅ Token OAuth2 recebido');
+            console.log('🔑 Token Type:', oauthData.token_type);
+            console.log('⏰ Expires In:', oauthData.expires_in, 'segundos');
 
-    /**
-     * ========================================
-     * VERIFICAR SE SERVIDOR ESTÁ DISPONÍVEL (PADRÃO IONIC)
-     * ========================================
-     */
-    private async isServerAvailable(): Promise<boolean> {
-        const { connection } = useConfigStore.getState();
+            if (!oauthData.access_token) {
+                throw new Error('❌ Token de acesso não retornado pelo servidor');
+            }
 
-        try {
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
-                timeout: 5000,
-            });
+            // Calcular quando o token irá expirar
+            const tokenExpiresAt = new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString();
 
-            console.log('📡 Ping respondeu:', response.status);
-            return true; // Qualquer resposta = servidor disponível
+            // Criar usuário autenticado
+            const authUser: AuthUser = {
+                username: credentials.username,
+                keepConnected: credentials.keepConnected || false,
+                lastLogin: new Date().toISOString(),
+                authType: AuthType.OAUTH2,
+                access_token: oauthData.access_token,
+                refresh_token: oauthData.refresh_token,
+                token_type: oauthData.token_type,
+                expires_in: oauthData.expires_in,
+                tokenExpiresAt,
+            };
+
+            // Salvar usuário
+            await this.saveAuthenticatedUser(authUser);
+
+            console.log('✅ Login OAuth2 concluído com sucesso');
+            return authUser;
+
         } catch (error: any) {
-            if (error.response?.status === 401) {
-                console.log('✅ Servidor seguro (401 no ping)');
-                return true; // 401 = servidor funcionando e seguro
+            console.error('❌ Erro no login OAuth2:', error);
+
+            // Tratar diferentes tipos de erro axios
+            if (error.code === 'ECONNABORTED') {
+                throw new Error('❌ Timeout na conexão com o servidor');
+            } else if (error.code === 'ECONNREFUSED') {
+                throw new Error('❌ Conexão recusada - verifique se o servidor está ligado');
+            } else if (error.code === 'ENOTFOUND') {
+                throw new Error('❌ Servidor não encontrado - verifique o endereço');
+            } else if (error.response) {
+                // Servidor respondeu com erro
+                const status = error.response.status;
+                const data = error.response.data;
+
+                if (status === 401) {
+                    throw new Error('❌ Usuário ou senha incorretos');
+                } else if (status === 400) {
+                    throw new Error('❌ Dados de login inválidos');
+                } else {
+                    const errorMsg = data?.error || data?.message || `Erro ${status}`;
+                    throw new Error(`❌ ${errorMsg}`);
+                }
+            } else if (error.request) {
+                throw new Error('❌ Erro de conexão com o servidor');
             } else {
-                console.log('❌ Servidor indisponível:', error.message);
-                return false; // Erro real de conectividade
+                throw new Error(`❌ Erro na autenticação: ${error.message}`);
             }
         }
     }
 
     /**
-     * ========================================
-     * TENTAR AUTENTICAÇÃO NO SERVIDOR (PADRÃO IONIC)
-     * ========================================
-     */
-    private async tryServerAuthentication(credentials: LoginCredentials): Promise<void> {
-        const { connection } = useConfigStore.getState();
-
-        try {
-            const authHeader = this.generateBasicAuth(credentials.username, credentials.password);
-
-            console.log('📡 Tentando autenticação no servidor...');
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/healthcheck`, {
-                headers: {
-                    'Authorization': `Basic ${authHeader}`,
-                },
-                timeout: 10000,
-            });
-
-            console.log('✅ Servidor autenticou:', response.status);
-            // Se chegou aqui sem erro = credenciais válidas no servidor
-        } catch (error: any) {
-            console.log('❌ Erro na autenticação servidor:', error.response?.status);
-            throw error; // Propagar erro para tratamento acima
-        }
-    }
-
-    /**
-     * ========================================
-     * VALIDAÇÃO LOCAL DE CREDENCIAIS
-     * ========================================
-     */
-    private async validateCredentialsLocally(credentials: LoginCredentials): Promise<boolean> {
-        console.log('🔍 Validação local iniciada...');
-
-        // 1. Verificar credenciais hardcoded
-        const isValidHardcoded = VALID_CREDENTIALS.some(validCred =>
-            validCred.username.toLowerCase() === credentials.username.toLowerCase() &&
-            validCred.password === credentials.password
-        );
-
-        if (isValidHardcoded) {
-            console.log('✅ Credencial válida (hardcoded)');
-            return true;
-        }
-
-        // 2. Verificar no storage
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(credentials.password);
-
-        const storedUser = users.find(u =>
-            u.username.toLowerCase() === credentials.username.toLowerCase() &&
-            u.cryptedPassword === cryptedPassword
-        );
-
-        if (storedUser) {
-            console.log('✅ Credencial válida (storage)');
-            return true;
-        }
-
-        console.log('❌ Credencial não encontrada');
-        return false;
-    }
-
-    /**
-     * ========================================
-     * TESTAR CONECTIVIDADE DO SERVIDOR
-     * ========================================
-     */
-    private async testServerConnectivity(): Promise<void> {
-        const { connection } = useConfigStore.getState();
-
-        try {
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
-                timeout: 5000,
-            });
-
-            console.log('📡 Servidor respondeu:', response.status);
-            // Não importa o status, só queremos saber se está acessível
-        } catch (error: any) {
-            console.log('⚠️ Servidor não acessível:', error.message);
-            throw error;
-        }
-    }
-
-
-
-    /**
-     * ========================================
-     * VERIFICAÇÃO DE SEGURANÇA (PADRÃO IONIC)
-     * ========================================
+     * Verificar se servidor OAuth2 está funcionando com axios
      */
     async checkSecurity(): Promise<boolean> {
         const { connection } = useConfigStore.getState();
 
-        console.log('🔒 Verificando servidor...');
-        console.log('📡 URL:', `${connection.baseUrl}/ping`);
+        if (!connection.baseUrl) {
+            return false;
+        }
+
+        console.log('🔒 Verificando servidor OAuth2...');
+        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
 
         try {
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/ping`, {
+            // Tentar com credenciais de teste usando axios
+            const response = await axios.post(oauthUrl, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'username': 'test_user_invalid',
+                    'password': 'test_password_invalid',
+                },
                 timeout: 10000,
+                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
             });
 
-            if (response.status === 200) {
-                console.log('⚠️ Servidor responde sem auth (pode não ser seguro)');
+            console.log('📡 Status teste segurança:', response.status);
 
-                // Testar se realmente valida credenciais
-                const validatesAuth = await this.testServerAuthValidation();
-                if (validatesAuth) {
-                    console.log('✅ Servidor valida credenciais adequadamente');
-                    return true;
-                } else {
-                    console.log('❌ Servidor NÃO valida credenciais adequadamente');
-                    return false;
-                }
-            } else {
-                console.log('✅ Servidor protegido');
+            // Se retornar 401 = servidor funcionando e validando credenciais
+            if (response.status === 401) {
+                console.log('✅ Servidor OAuth2 seguro (rejeitou credenciais inválidas)');
                 return true;
             }
-        } catch (error: any) {
-            if (error.response?.status === 401) {
-                console.log('✅ Servidor protegido (401 no ping) - PADRÃO IONIC');
-                return true; // ✅ SEGUINDO PADRÃO IONIC: 401 = SEGURO
-            } else {
-                console.log('⚠️ Erro de conectividade:', error.message);
-                return false; // Erro real de rede
+
+            // Se retornar 400 = servidor funcionando (bad request)
+            if (response.status === 400) {
+                console.log('✅ Servidor OAuth2 funcionando (bad request)');
+                return true;
             }
+
+            // Se retornar 200 com token = problema (não deveria aceitar credenciais falsas)
+            if (response.status === 200) {
+                if (response.data?.access_token) {
+                    console.log('⚠️ ATENÇÃO: Servidor aceitou credenciais falsas!');
+                    return false;
+                } else {
+                    console.log('✅ Servidor funcionando');
+                    return true;
+                }
+            }
+
+            console.log('⚠️ Status inesperado:', response.status);
+            return false;
+
+        } catch (error: any) {
+            console.error('❌ Erro ao verificar segurança:', error);
+
+            if (error.code === 'ECONNABORTED') {
+                console.log('❌ Timeout na verificação');
+                return false;
+            } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+                console.log('❌ Servidor não acessível');
+                return false;
+            } else if (error.response) {
+                // Se retornou erro 401, significa que está seguro
+                if (error.response.status === 401) {
+                    console.log('✅ Servidor OAuth2 seguro (401 em teste)');
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
     /**
-     * ========================================
-     * TESTAR SE SERVIDOR VALIDA CREDENCIAIS
-     * ========================================
+     * Refresh do token OAuth2 com axios
      */
-    private async testServerAuthValidation(): Promise<boolean> {
-        const { connection } = useConfigStore.getState();
+    async refreshToken(): Promise<AuthUser> {
+        const currentUser = await this.getCurrentUser();
 
-        console.log('🧪 Testando se servidor valida credenciais...');
+        if (!currentUser || !currentUser.refresh_token) {
+            throw new Error('❌ Nenhum refresh token disponível');
+        }
+
+        const { connection } = useConfigStore.getState();
+        const refreshUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=refresh_token`;
+
+        console.log('🔄 Renovando token OAuth2...');
 
         try {
-            // Teste com credenciais obviamente falsas
-            const fakeAuth = this.generateBasicAuth('fake_user_123', 'fake_password_456');
-
-            const response = await this.axiosInstance.get(`${connection.baseUrl}/healthcheck`, {
-                headers: { 'Authorization': `Basic ${fakeAuth}` },
-                timeout: 5000,
+            const response = await axios.post(refreshUrl, {
+                refresh_token: currentUser.refresh_token,
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentUser.access_token}`,
+                },
+                timeout: 10000,
+                validateStatus: (status) => status < 500,
             });
 
-            if (response.status === 200) {
-                console.log('❌ SERVIDOR NÃO VALIDA CREDENCIAIS! (aceitou credenciais falsas)');
-                return false; // Servidor não é seguro
-            } else {
-                console.log('✅ Servidor rejeitou credenciais falsas');
-                return true; // Servidor é seguro
+            if (response.status !== 200 || !response.data.access_token) {
+                throw new Error(`Erro ${response.status} no refresh token`);
             }
 
-        } catch (error: any) {
-            if (error.response?.status === 401) {
-                console.log('✅ Servidor rejeitou credenciais falsas (401)');
-                return true; // Servidor é seguro
-            } else {
-                console.log('⚠️ Erro no teste de validação:', error.message);
-                return false; // Assumir não seguro
-            }
-        }
-    }
+            const oauthData: OAuth2Response = response.data;
 
-    /**
-     * ========================================
-     * PROCESSAMENTO DO USUÁRIO
-     * ========================================
-     */
-    private async handleUserSignIn(userData: any): Promise<AuthUser> {
-        console.log('💾 Salvando usuário...');
-
-        const users = await this.getStoredUsers();
-        const cryptedPassword = sha256(userData.password);
-
-        let user = users.find(u =>
-            u.username.toLowerCase() === userData.username.toLowerCase()
-        );
-
-        if (user) {
-            console.log('🔄 Atualizando usuário existente');
-            user.cryptedPassword = cryptedPassword;
-            user.keepConnected = userData.keepConnected;
-            user.lastLogin = userData.lastLogin;
-            user.authType = this.authType;
-
-            if (user.keepConnected) {
-                user.password = userData.password;
-            } else {
-                delete user.password;
-            }
-        } else {
-            console.log('➕ Criando novo usuário');
-            user = {
-                username: userData.username,
-                cryptedPassword,
-                keepConnected: userData.keepConnected,
-                lastLogin: userData.lastLogin,
-                authType: this.authType,
+            // Atualizar dados do usuário
+            const updatedUser: AuthUser = {
+                ...currentUser,
+                access_token: oauthData.access_token,
+                refresh_token: oauthData.refresh_token || currentUser.refresh_token,
+                expires_in: oauthData.expires_in,
+                tokenExpiresAt: new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString(),
+                lastLogin: new Date().toISOString(),
             };
 
-            if (user.keepConnected) {
-                user.password = userData.password;
-            }
+            await this.saveAuthenticatedUser(updatedUser);
 
-            users.push(user);
+            console.log('✅ Token renovado com sucesso');
+            return updatedUser;
+
+        } catch (error: any) {
+            console.error('❌ Erro no refresh token:', error);
+
+            // Se refresh falhar, forçar novo login
+            await this.signOut();
+            throw new Error('❌ Sessão expirada, faça login novamente');
         }
-
-        await this.saveUsers(users);
-
-        if (user.keepConnected) {
-            await this.keepUser(user);
-        }
-
-        this.currentUser = user;
-        console.log('✅ Usuário salvo com sucesso');
-        return user;
     }
 
     /**
-     * ========================================
-     * DETECÇÃO DE ERRO DE REDE
-     * ========================================
+     * Verificar se token está válido
      */
-    private isNetworkError(error: any): boolean {
-        const networkErrors = [
-            'ECONNABORTED',
-            'NETWORK_ERROR',
-            'ECONNREFUSED',
-            'ENOTFOUND',
-            'ETIMEDOUT',
-        ];
+    async isTokenValid(): Promise<boolean> {
+        const currentUser = await this.getCurrentUser();
 
-        return (
-            networkErrors.includes(error.code) ||
-            error.message?.includes('Network Error') ||
-            error.message?.includes('timeout') ||
-            error.message?.includes('fetch')
-        );
+        if (!currentUser || !currentUser.access_token || !currentUser.tokenExpiresAt) {
+            return false;
+        }
+
+        const expiresAt = new Date(currentUser.tokenExpiresAt);
+        const now = new Date();
+        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+
+        // Se faltam menos de 5 minutos, considerar inválido
+        if (timeUntilExpiry < 5 * 60 * 1000) {
+            console.log('⚠️ Token expirando em breve');
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * ========================================
-     * MÉTODOS BÁSICOS (INALTERADOS)
-     * ========================================
+     * Salvar usuário autenticado
+     */
+    private async saveAuthenticatedUser(authUser: AuthUser): Promise<void> {
+        this.currentUser = authUser;
+
+        // Salvar usuário atual
+        await asyncStorageService.setItem('current_user', authUser);
+
+        // Se keepConnected, salvar para auto login
+        if (authUser.keepConnected) {
+            let savedUsers = await this.getSavedUsers();
+
+            // Remover usuário existente
+            savedUsers = savedUsers.filter(u =>
+                u.username.toLowerCase() !== authUser.username.toLowerCase()
+            );
+
+            // Adicionar usuário atualizado
+            savedUsers.push(authUser);
+
+            await asyncStorageService.setItem('saved_users', savedUsers);
+            console.log('💾 Usuário salvo para auto login');
+        }
+
+        console.log('✅ Usuário salvo no storage');
+    }
+
+    /**
+     * Logout com axios
      */
     async signOut(): Promise<void> {
         console.log('🚪 Fazendo logout...');
+
+        // Tentar revogar token no servidor (opcional)
+        try {
+            const currentUser = await this.getCurrentUser();
+            if (currentUser?.access_token) {
+                const { connection } = useConfigStore.getState();
+                const revokeUrl = `${connection.baseUrl}/api/oauth2/v1/revoke`;
+
+                await axios.post(revokeUrl, {}, {
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.access_token}`,
+                    },
+                    timeout: 5000,
+                    validateStatus: () => true, // Aceitar qualquer status
+                });
+
+                console.log('🔓 Token revogado no servidor');
+            }
+        } catch (error) {
+            console.log('⚠️ Erro ao revogar token (continuando logout):', error);
+        }
+
+        // Limpar estado local
         this.currentUser = null;
-        await asyncStorageService.removeItem('user');
+        await asyncStorageService.removeItem('current_user');
+
         console.log('✅ Logout realizado');
     }
 
+    /**
+     * Obter usuário atual
+     */
     async getCurrentUser(): Promise<AuthUser | null> {
         if (this.currentUser) {
             return this.currentUser;
         }
 
-        const storedUser = await asyncStorageService.getItem<AuthUser>('user');
+        const storedUser = await asyncStorageService.getItem<AuthUser>('current_user');
         if (storedUser) {
             this.currentUser = storedUser;
         }
@@ -410,171 +383,166 @@ export class AuthService {
         return this.currentUser;
     }
 
+    /**
+     * Verificar auto login
+     */
     async checkAutoLogin(): Promise<AuthUser | null> {
         console.log('🔍 Verificando auto login...');
 
-        const users = await this.getStoredUsers();
+        const savedUsers = await this.getSavedUsers();
 
-        if (users.length === 0) {
+        if (savedUsers.length === 0) {
             console.log('ℹ️ Nenhum usuário salvo');
             return null;
         }
 
-        const sortedUsers = users.sort((a, b) =>
+        // Ordenar por último login
+        const sortedUsers = savedUsers.sort((a, b) =>
             new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
         );
 
-        const lastUser = sortedUsers[0];
+        for (const user of sortedUsers) {
+            if (user.keepConnected && user.access_token) {
+                // Verificar se token ainda é válido
+                const expiresAt = new Date(user.tokenExpiresAt);
+                const now = new Date();
 
-        if (lastUser.keepConnected && lastUser.password) {
-            console.log('✅ Auto login disponível para:', lastUser.username);
-            return lastUser;
-        }
+                if (expiresAt > now) {
+                    console.log('✅ Auto login disponível para:', user.username);
+                    return user;
+                } else {
+                    console.log('⚠️ Token expirado para:', user.username);
 
-        return null;
-    }
-
-    private generateBasicAuth(username: string, password: string): string {
-        return btoa(`${username}:${password}`);
-    }
-
-    getAuthToken(): string | null {
-        if (!this.currentUser) return null;
-
-        if (this.authType === AuthType.OAUTH2) {
-            return this.currentUser.access_token || null;
-        } else {
-            if (this.currentUser.password) {
-                return this.generateBasicAuth(this.currentUser.username, this.currentUser.password);
+                    // Tentar refresh se tiver refresh_token
+                    if (user.refresh_token) {
+                        try {
+                            this.currentUser = user;
+                            const refreshedUser = await this.refreshToken();
+                            console.log('✅ Token renovado para auto login');
+                            return refreshedUser;
+                        } catch (error) {
+                            console.log('❌ Erro no refresh para auto login:', error);
+                        }
+                    }
+                }
             }
         }
 
+        console.log('ℹ️ Nenhum auto login válido disponível');
         return null;
     }
 
-    getAuthType(): AuthType {
-        return this.authType;
-    }
+    /**
+     * Obter token de autorização
+     */
+    getAuthToken(): string | null {
+        if (!this.currentUser?.access_token) {
+            return null;
+        }
 
-    async refreshToken(): Promise<void> {
-        // Implementar se necessário para OAUTH2
-        console.log('🔄 Refresh token não implementado');
-    }
-
-    private async getStoredUsers(): Promise<AuthUser[]> {
-        const users = await asyncStorageService.getItem<AuthUser[]>('users');
-        return Array.isArray(users) ? users : [];
-    }
-
-    private async saveUsers(users: AuthUser[]): Promise<void> {
-        await asyncStorageService.setItem('users', users);
-    }
-
-    private async keepUser(user: AuthUser): Promise<void> {
-        await asyncStorageService.setItem('user', user);
+        return `${this.currentUser.token_type} ${this.currentUser.access_token}`;
     }
 
     /**
-     * ========================================
-     * MÉTODOS DE DEBUG
-     * ========================================
+     * Obter tipo de autenticação
+     */
+    getAuthType(): AuthType {
+        return AuthType.OAUTH2;
+    }
+
+    /**
+     * Obter usuários salvos
+     */
+    private async getSavedUsers(): Promise<AuthUser[]> {
+        const users = await asyncStorageService.getItem<AuthUser[]>('saved_users');
+        return Array.isArray(users) ? users : [];
+    }
+
+    /**
+     * Limpar todos os dados (debug)
      */
     async clearStorage(): Promise<void> {
-        console.log('🗑️ Limpando storage...');
-        await asyncStorageService.removeItem('users');
-        await asyncStorageService.removeItem('user');
+        console.log('🗑️ Limpando storage OAuth2...');
+        await asyncStorageService.removeItem('current_user');
+        await asyncStorageService.removeItem('saved_users');
         this.currentUser = null;
         console.log('✅ Storage limpo');
     }
 
+    /**
+     * Listar usuários salvos (debug)
+     */
     async listStoredUsers(): Promise<AuthUser[]> {
-        const users = await this.getStoredUsers();
-        console.log('📋 Usuários no storage:', users.length);
+        const users = await this.getSavedUsers();
+        console.log('📋 Usuários salvos:', users.length);
         return users;
     }
 
+    /**
+     * Informações do sistema (debug)
+     */
     getSystemInfo() {
         return {
             currentUser: this.currentUser?.username || null,
-            authType: this.authType,
-            hasToken: !!this.getAuthToken(),
-            validCredentials: VALID_CREDENTIALS.map(c => c.username),
+            authType: AuthType.OAUTH2,
+            hasToken: !!this.currentUser?.access_token,
+            tokenValid: this.currentUser ? this.isTokenValid() : false,
+            tokenExpiresAt: this.currentUser?.tokenExpiresAt || null,
         };
     }
 
     /**
-     * ========================================
-     * CONFIGURAR CREDENCIAIS VÁLIDAS (ESTÁTICOS)
-     * ========================================
-     */
-    static addValidCredential(username: string, password: string): void {
-        const exists = VALID_CREDENTIALS.some(c =>
-            c.username.toLowerCase() === username.toLowerCase()
-        );
-
-        if (!exists) {
-            VALID_CREDENTIALS.push({ username, password });
-            console.log('✅ Credencial adicionada:', username);
-        }
-    }
-
-    static getValidCredentials(): Array<{ username: string, password: string }> {
-        return [...VALID_CREDENTIALS];
-    }
-
-    /**
-     * ========================================
-     * NOVO: MÉTODO DE TESTE PARA DEBUG (VERSÃO IONIC)
-     * ========================================
+     * Testar credenciais sem salvar (debug) com axios
      */
     async testCredentialsOnly(credentials: LoginCredentials): Promise<{
-        localValid: boolean;
-        serverAvailable?: boolean;
-        serverAuthWorked?: boolean;
-        serverSecure?: boolean;
+        success: boolean;
+        data?: OAuth2Response;
         error?: string;
     }> {
-        console.log('🧪 Testando credenciais (modo debug)...');
+        const { connection } = useConfigStore.getState();
 
-        // Teste local
-        const localValid = await this.validateCredentialsLocally(credentials);
+        if (!connection.baseUrl) {
+            return { success: false, error: 'URL não configurada' };
+        }
 
-        // Teste disponibilidade do servidor
+        const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+
         try {
-            const serverAvailable = await this.isServerAvailable();
+            const response = await axios.post(oauthUrl, {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'username': credentials.username,
+                    'password': credentials.password,
+                },
+                timeout: 10000,
+                validateStatus: (status) => status < 500, // Aceitar qualquer status < 500
+            });
 
-            if (serverAvailable) {
-                // Se servidor disponível, testar autenticação real
-                try {
-                    await this.tryServerAuthentication(credentials);
-
-                    return {
-                        localValid,
-                        serverAvailable: true,
-                        serverAuthWorked: true,
-                        serverSecure: true,
-                    };
-                } catch (authError: any) {
-                    return {
-                        localValid,
-                        serverAvailable: true,
-                        serverAuthWorked: false,
-                        serverSecure: true,
-                        error: `Auth falhou: ${authError.response?.status}`,
-                    };
-                }
+            if (response.status === 200 && response.data.access_token) {
+                return { success: true, data: response.data };
             } else {
                 return {
-                    localValid,
-                    serverAvailable: false,
-                    error: 'Servidor indisponível',
+                    success: false,
+                    error: response.data?.error || `Status ${response.status}`
                 };
             }
+
         } catch (error: any) {
+            let errorMessage = 'Erro na requisição';
+
+            if (error.code === 'ECONNABORTED') {
+                errorMessage = 'Timeout na requisição';
+            } else if (error.response) {
+                errorMessage = error.response.data?.error || `Status ${error.response.status}`;
+            } else if (error.request) {
+                errorMessage = 'Não foi possível conectar ao servidor';
+            } else {
+                errorMessage = error.message || 'Erro desconhecido';
+            }
+
             return {
-                localValid,
-                serverAvailable: false,
-                error: error.message,
+                success: false,
+                error: errorMessage
             };
         }
     }

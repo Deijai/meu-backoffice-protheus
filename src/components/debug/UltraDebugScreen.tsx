@@ -1,4 +1,4 @@
-// src/components/debug/UltraDebugScreen.tsx - VERSÃO MELHORADA
+// src/components/debug/UltraDebugScreen.tsx - VERSÃO OAUTH2 PROTHEUS
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -8,7 +8,8 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Toast } from '../../components/ui/Toast';
-import { authService, AuthService } from '../../services/api/authService';
+import { authService } from '../../services/api/authService';
+import { restValidator } from '../../services/api/restValidator';
 import { useConfigStore } from '../../store/configStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useToastStore } from '../../store/toastStore';
@@ -26,15 +27,15 @@ export default function UltraDebugScreen() {
     const { connection } = useConfigStore();
     const { showSuccess, showError, visible, message, type, hideToast } = useToastStore();
 
-    // ✅ SUAS CREDENCIAIS CORRETAS
+    // Credenciais de teste OAuth2
     const [credentials, setCredentials] = useState({
         username: 'admin',
-        password: '1234', // ← SUA SENHA CORRETA
+        password: '1234',
     });
 
     const [wrongCredentials, setWrongCredentials] = useState({
         username: 'admin',
-        password: 'senha_totalmente_errada',
+        password: 'senha_errada_oauth2',
     });
 
     const [logs, setLogs] = useState<DebugLog[]>([]);
@@ -51,136 +52,158 @@ export default function UltraDebugScreen() {
         setLogs(prev => [...prev, log]);
 
         const emoji = level === 'success' ? '✅' : level === 'warning' ? '⚠️' : level === 'error' ? '❌' : 'ℹ️';
-        console.log(`${emoji} [DEBUG] ${message}`, data);
+        console.log(`${emoji} [OAUTH2 DEBUG] ${message}`, data);
     };
 
     const clearLogs = () => {
         setLogs([]);
         console.clear();
-        console.log('🔬 === ULTRA DEBUG MODE ATIVADO ===');
+        console.log('🔬 === OAUTH2 PROTHEUS DEBUG MODE ATIVADO ===');
     };
 
     /**
-     * ✅ TESTE PRINCIPAL MELHORADO
+     * Teste completo OAuth2 Protheus
      */
-    const investigateProblem = async () => {
+    const testCompleteOAuth2Flow = async () => {
         setIsRunning(true);
         clearLogs();
 
-        addLog('info', '🔬 INVESTIGAÇÃO COMPLETA INICIADA');
+        addLog('info', '🔬 TESTE COMPLETO OAUTH2 PROTHEUS INICIADO');
 
         try {
             // 1. Verificar configuração
-            addLog('info', '1️⃣ Verificando configuração...');
+            addLog('info', '1️⃣ Verificando configuração OAuth2...');
 
             if (!connection.baseUrl) {
-                addLog('error', 'URL base não configurada');
-                showError('Configure o servidor primeiro');
+                addLog('error', 'URL base OAuth2 não configurada');
+                showError('Configure o servidor OAuth2 primeiro');
                 return;
             }
 
-            addLog('success', `URL configurada: ${connection.baseUrl}`, {
+            const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
+            addLog('success', `URL OAuth2 configurada: ${oauthUrl}`, {
+                baseUrl: connection.baseUrl,
+                oauthEndpoint: oauthUrl,
                 protocol: connection.protocol,
                 address: connection.address,
                 port: connection.port,
                 endpoint: connection.endpoint,
-                fullUrl: connection.baseUrl,
             });
 
             // 2. Limpar storage para teste limpo
-            addLog('info', '2️⃣ Limpando storage para teste limpo...');
+            addLog('info', '2️⃣ Limpando storage OAuth2...');
             await authService.clearStorage();
-            addLog('success', 'Storage limpo');
+            addLog('success', 'Storage OAuth2 limpo');
 
-            // 3. Verificar credenciais válidas no sistema
-            addLog('info', '3️⃣ Verificando credenciais válidas...');
-            const validCreds = AuthService.getValidCredentials().map(c => c.username);
-            addLog('info', 'Credenciais válidas no sistema', validCreds);
+            // 3. Testar conectividade básica do endpoint OAuth2
+            addLog('info', '3️⃣ Testando conectividade OAuth2...');
 
-            // 4. Verificar segurança do servidor
-            addLog('info', '4️⃣ Verificando segurança do servidor...');
+            try {
+                const connectivityResult = await restValidator.testConnection({
+                    protocol: connection.protocol,
+                    address: connection.address,
+                    port: connection.port,
+                    endpoint: connection.endpoint,
+                });
+
+                if (connectivityResult.success) {
+                    addLog('success', 'Conectividade OAuth2 OK', {
+                        url: connectivityResult.url,
+                        status: connectivityResult.statusCode,
+                        data: connectivityResult.data,
+                    });
+                } else {
+                    addLog('error', 'Falha na conectividade OAuth2', {
+                        error: connectivityResult.error,
+                        url: connectivityResult.url,
+                    });
+                    showError('❌ Servidor OAuth2 não acessível');
+                    return;
+                }
+            } catch (connectError) {
+                addLog('error', 'Erro na conectividade OAuth2', connectError);
+                return;
+            }
+
+            // 4. Verificar segurança OAuth2
+            addLog('info', '4️⃣ Verificando segurança OAuth2...');
 
             try {
                 const isSecure = await authService.checkSecurity();
 
                 if (isSecure) {
-                    addLog('success', 'Servidor SEGURO ✅ (Valida credenciais adequadamente)');
+                    addLog('success', 'Servidor OAuth2 SEGURO ✅ (Valida credenciais adequadamente)');
                 } else {
-                    addLog('warning', 'Servidor NÃO SEGURO ⚠️ (Não valida credenciais ou sempre retorna 200)');
-                    addLog('warning', 'Sistema usará apenas validação local');
+                    addLog('warning', 'Servidor OAuth2 pode não estar validando credenciais adequadamente');
                 }
             } catch (secError) {
-                addLog('error', 'Erro ao verificar segurança', secError);
+                addLog('error', 'Erro ao verificar segurança OAuth2', secError);
             }
 
-            // 5. TESTE NOVO: Verificar credenciais usando método de teste
-            addLog('info', '5️⃣ 🧪 TESTANDO CREDENCIAIS COM NOVO MÉTODO');
+            // 5. TESTE CREDENCIAIS ERRADAS (deve falhar)
+            addLog('info', '5️⃣ 🧪 TESTANDO CREDENCIAIS ERRADAS OAuth2');
+            addLog('warning', `Testando credenciais ERRADAS: ${wrongCredentials.username}/${wrongCredentials.password}`);
 
-            // Teste credenciais corretas
-            addLog('info', `Testando credenciais CORRETAS: ${credentials.username}/${credentials.password}`);
             try {
-                const testResult = await authService.testCredentialsOnly({
-                    username: credentials.username,
-                    password: credentials.password,
-                });
-
-                addLog('success', 'Resultado do teste de credenciais corretas', testResult);
-
-                if (testResult.localValid) {
-                    addLog('success', '✅ Credenciais CORRETAS são válidas localmente');
-                } else {
-                    addLog('error', '❌ Credenciais CORRETAS são inválidas localmente (problema!)');
-                }
-
-                if (testResult.serverAvailable) {
-                    addLog('success', '✅ Servidor está disponível');
-
-                    if (testResult.serverAuthWorked) {
-                        addLog('success', '✅ Servidor ACEITOU as credenciais corretas');
-                    } else {
-                        addLog('error', '❌ Servidor REJEITOU as credenciais corretas (problema!)');
-                    }
-                } else {
-                    addLog('warning', '⚠️ Servidor não está disponível (mas login local funciona)');
-                }
-            } catch (testError) {
-                addLog('error', 'Erro no teste de credenciais corretas', testError);
-            }
-
-            // Teste credenciais erradas
-            addLog('info', `Testando credenciais ERRADAS: ${wrongCredentials.username}/${wrongCredentials.password}`);
-            try {
-                const testResult = await authService.testCredentialsOnly({
+                const wrongResult = await authService.testCredentialsOnly({
                     username: wrongCredentials.username,
                     password: wrongCredentials.password,
                 });
 
-                addLog('info', 'Resultado do teste de credenciais erradas', testResult);
-
-                if (!testResult.localValid) {
-                    addLog('success', '✅ Credenciais ERRADAS são rejeitadas localmente (correto)');
+                if (wrongResult.success) {
+                    addLog('error', '🚨 PROBLEMA! OAuth2 aceitou credenciais ERRADAS!', wrongResult.data);
+                    showError('🚨 PROBLEMA DETECTADO! Servidor OAuth2 aceitou credenciais erradas!');
                 } else {
-                    addLog('error', '❌ Credenciais ERRADAS são aceitas localmente (problema!)');
+                    addLog('success', '✅ OAuth2 rejeitou credenciais ERRADAS (correto)', {
+                        error: wrongResult.error,
+                    });
                 }
-
-                if (testResult.serverAvailable) {
-                    if (!testResult.serverAuthWorked) {
-                        addLog('success', '✅ Servidor REJEITOU as credenciais erradas (correto)');
-                    } else {
-                        addLog('error', '❌ Servidor ACEITOU as credenciais erradas (problema!)');
-                    }
-                } else {
-                    addLog('info', 'ℹ️ Servidor não disponível para testar credenciais erradas');
-                }
-            } catch (testError) {
-                addLog('success', 'Credenciais erradas rejeitadas com erro (esperado)', testError);
+            } catch (wrongError: any) {
+                addLog('success', '✅ OAuth2 rejeitou credenciais ERRADAS com erro (esperado)', {
+                    error: wrongError.message,
+                });
             }
 
-            // 6. TESTE COMPLETO DE LOGIN
-            addLog('info', '6️⃣ 🚨 TESTE COMPLETO DE LOGIN');
+            // 6. TESTE CREDENCIAIS CORRETAS (deve passar)
+            addLog('info', '6️⃣ 🧪 TESTANDO CREDENCIAIS CORRETAS OAuth2');
+            addLog('info', `Testando credenciais CORRETAS: ${credentials.username}/${credentials.password}`);
+
+            try {
+                const correctResult = await authService.testCredentialsOnly({
+                    username: credentials.username,
+                    password: credentials.password,
+                });
+
+                if (correctResult.success) {
+                    addLog('success', '✅ OAuth2 aceitou credenciais CORRETAS!', correctResult.data);
+
+                    // Validar token recebido
+                    if (correctResult.data?.access_token) {
+                        addLog('success', '🔑 Token OAuth2 recebido', {
+                            token_type: correctResult.data.token_type,
+                            expires_in: correctResult.data.expires_in,
+                            access_token_length: correctResult.data.access_token.length,
+                            has_refresh_token: !!correctResult.data.refresh_token,
+                        });
+                    } else {
+                        addLog('warning', '⚠️ Token OAuth2 não encontrado na resposta');
+                    }
+                } else {
+                    addLog('error', '❌ OAuth2 rejeitou credenciais CORRETAS (problema!)', {
+                        error: correctResult.error,
+                    });
+                }
+            } catch (correctError: any) {
+                addLog('error', '❌ Erro inesperado com credenciais CORRETAS', {
+                    error: correctError.message,
+                });
+            }
+
+            // 7. TESTE LOGIN COMPLETO OAuth2
+            addLog('info', '7️⃣ 🚨 TESTE LOGIN COMPLETO OAuth2');
 
             // Login com credenciais erradas (deve falhar)
-            addLog('warning', 'Testando LOGIN COMPLETO com credenciais ERRADAS...');
+            addLog('warning', 'Testando LOGIN COMPLETO OAuth2 com credenciais ERRADAS...');
             try {
                 await authService.signIn({
                     username: wrongCredentials.username,
@@ -188,20 +211,20 @@ export default function UltraDebugScreen() {
                     keepConnected: false,
                 });
 
-                addLog('error', '🚨 PROBLEMA GRAVE! Login errado passou!');
-                showError('🚨 PROBLEMA DETECTADO! Login errado passou!');
+                addLog('error', '🚨 PROBLEMA GRAVE! Login OAuth2 errado passou!');
+                showError('🚨 PROBLEMA DETECTADO! Login OAuth2 errado passou!');
 
                 // Fazer logout imediato
                 await authService.signOut();
 
-            } catch (wrongError: any) {
-                addLog('success', '✅ Login com credenciais erradas foi rejeitado (correto)', {
-                    error: wrongError.message,
+            } catch (wrongLoginError: any) {
+                addLog('success', '✅ Login OAuth2 com credenciais erradas foi rejeitado (correto)', {
+                    error: wrongLoginError.message,
                 });
             }
 
             // Login com credenciais corretas (deve passar)
-            addLog('info', 'Testando LOGIN COMPLETO com credenciais CORRETAS...');
+            addLog('info', 'Testando LOGIN COMPLETO OAuth2 com credenciais CORRETAS...');
             try {
                 const authUser = await authService.signIn({
                     username: credentials.username,
@@ -209,48 +232,89 @@ export default function UltraDebugScreen() {
                     keepConnected: false,
                 });
 
-                addLog('success', '✅ Login com credenciais corretas funcionou!', {
+                addLog('success', '✅ Login OAuth2 com credenciais corretas funcionou!', {
                     username: authUser.username,
                     authType: authUser.authType,
+                    token_type: authUser.token_type,
+                    expires_in: authUser.expires_in,
+                    tokenExpiresAt: authUser.tokenExpiresAt,
+                    hasRefreshToken: !!authUser.refresh_token,
                 });
 
                 // Fazer logout
                 await authService.signOut();
-                addLog('info', 'Logout após teste');
+                addLog('info', 'Logout OAuth2 após teste');
 
-            } catch (correctError: any) {
-                addLog('error', '❌ Login com credenciais corretas falhou!', {
-                    error: correctError.message,
+            } catch (correctLoginError: any) {
+                addLog('error', '❌ Login OAuth2 com credenciais corretas falhou!', {
+                    error: correctLoginError.message,
                 });
             }
 
-            // 7. Verificar estado final
-            addLog('info', '7️⃣ Estado final do sistema...');
+            // 8. Verificar estado final
+            addLog('info', '8️⃣ Estado final do sistema OAuth2...');
             const finalUsers = await authService.listStoredUsers();
             const finalSystemInfo = authService.getSystemInfo();
 
-            addLog('info', `Usuários no storage: ${finalUsers.length}`);
-            addLog('info', 'Info final do sistema', finalSystemInfo);
+            addLog('info', `Usuários OAuth2 no storage: ${finalUsers.length}`);
+            addLog('info', 'Info final do sistema OAuth2', finalSystemInfo);
 
-            showSuccess('✅ Investigação completa finalizada!');
+            showSuccess('✅ Investigação OAuth2 completa finalizada!');
 
         } catch (error: any) {
-            addLog('error', 'Erro durante investigação', {
+            addLog('error', 'Erro durante investigação OAuth2', {
                 message: error.message,
                 stack: error.stack,
             });
         } finally {
             setIsRunning(false);
-            addLog('info', '🏁 INVESTIGAÇÃO FINALIZADA');
+            addLog('info', '🏁 INVESTIGAÇÃO OAUTH2 FINALIZADA');
         }
     };
 
     /**
-     * ✅ TESTE RÁPIDO DE CREDENCIAIS (VERSÃO IONIC)
+     * Teste rápido de conectividade OAuth2
      */
-    const quickTestCredentials = async (creds: any, label: string) => {
+    const quickConnectivityTest = async () => {
         setIsRunning(true);
-        addLog('info', `🧪 TESTE RÁPIDO: ${label}...`);
+        addLog('info', '🔌 TESTE RÁPIDO DE CONECTIVIDADE OAUTH2');
+
+        try {
+            const result = await restValidator.testConnection({
+                protocol: connection.protocol,
+                address: connection.address,
+                port: connection.port,
+                endpoint: connection.endpoint,
+            });
+
+            if (result.success) {
+                showSuccess('✅ Servidor OAuth2 acessível!');
+                addLog('success', 'Conectividade OAuth2 OK', {
+                    url: result.url,
+                    status: result.statusCode,
+                    responseData: result.data,
+                });
+            } else {
+                showError('❌ Servidor OAuth2 não acessível');
+                addLog('error', 'Falha na conectividade OAuth2', {
+                    error: result.error,
+                    url: result.url,
+                });
+            }
+        } catch (error) {
+            showError('❌ Erro no teste de conectividade OAuth2');
+            addLog('error', 'Erro na conectividade OAuth2', error);
+        } finally {
+            setIsRunning(false);
+        }
+    };
+
+    /**
+     * Teste específico de credenciais OAuth2
+     */
+    const testSpecificCredentials = async (creds: any, label: string) => {
+        setIsRunning(true);
+        addLog('info', `🧪 TESTE ESPECÍFICO OAUTH2: ${label}...`);
 
         try {
             const result = await authService.testCredentialsOnly({
@@ -258,88 +322,37 @@ export default function UltraDebugScreen() {
                 password: creds.password,
             });
 
-            addLog('success', `Resultado ${label}`, result);
+            addLog('info', `Resultado ${label} OAuth2`, result);
 
-            // Avaliar resultado local
             if (label.includes('CORRETAS')) {
-                if (result.localValid) {
-                    showSuccess(`✅ ${label} válidas localmente`);
+                if (result.success) {
+                    showSuccess(`✅ ${label} OAuth2 válidas`);
+                    addLog('success', `${label} OAuth2 aceitas pelo servidor`, result.data);
                 } else {
-                    showError(`❌ ${label} inválidas localmente`);
+                    showError(`❌ ${label} OAuth2 rejeitadas`);
+                    addLog('error', `${label} OAuth2 rejeitadas`, result);
                 }
             } else {
-                if (!result.localValid) {
-                    showSuccess(`✅ ${label} rejeitadas localmente (correto)`);
+                if (!result.success) {
+                    showSuccess(`✅ ${label} OAuth2 rejeitadas (correto)`);
+                    addLog('success', `${label} OAuth2 rejeitadas (comportamento correto)`, result);
                 } else {
-                    showError(`❌ ${label} aceitas localmente (problema!)`);
+                    showError(`❌ ${label} OAuth2 aceitas (problema!)`);
+                    addLog('error', `${label} OAuth2 aceitas (problema!)`, result);
                 }
-            }
-
-            // Informações sobre o servidor
-            if (result.serverAvailable) {
-                if (label.includes('CORRETAS')) {
-                    if (result.serverAuthWorked) {
-                        addLog('success', 'Servidor aceitou credenciais corretas ✅');
-                    } else {
-                        addLog('error', 'Servidor rejeitou credenciais corretas ❌');
-                    }
-                } else {
-                    if (!result.serverAuthWorked) {
-                        addLog('success', 'Servidor rejeitou credenciais erradas ✅');
-                    } else {
-                        addLog('error', 'Servidor aceitou credenciais erradas ❌');
-                    }
-                }
-            } else {
-                addLog('warning', 'Servidor não está disponível');
             }
 
         } catch (error: any) {
-            addLog('error', `Erro em ${label}`, error);
             if (label.includes('ERRADAS')) {
-                showSuccess(`✅ ${label} rejeitadas com erro (esperado)`);
+                showSuccess(`✅ ${label} OAuth2 rejeitadas com erro (esperado)`);
+                addLog('success', `${label} OAuth2 rejeitadas com erro (esperado)`, error);
             } else {
-                showError(`❌ Erro inesperado em ${label}`);
+                showError(`❌ Erro inesperado em ${label} OAuth2`);
+                addLog('error', `Erro em ${label} OAuth2`, error);
             }
         } finally {
             setIsRunning(false);
         }
-    };
-
-    /**
-     * ✅ ADICIONAR CREDENCIAL PERSONALIZADA
-     */
-    const addCustomCredential = () => {
-        Alert.prompt(
-            'Adicionar Credencial',
-            'Digite no formato: usuario:senha',
-            (input) => {
-                if (input && input.includes(':')) {
-                    const [username, password] = input.split(':');
-                    AuthService.addValidCredential(username.trim(), password.trim());
-                    addLog('success', `Credencial adicionada: ${username}`);
-                    showSuccess(`✅ Credencial ${username} adicionada!`);
-                } else {
-                    showError('❌ Formato inválido. Use: usuario:senha');
-                }
-            },
-            'plain-text',
-            'admin:1234'
-        );
-    };
-
-    /**
-     * ✅ MOSTRAR TODAS AS CREDENCIAIS VÁLIDAS
-     */
-    const showValidCredentials = () => {
-        const validCreds = AuthService.getValidCredentials();
-        const credsList = validCreds.map(c => `${c.username}:${c.password}`).join('\n');
-
-        Alert.alert(
-            'Credenciais Válidas no Sistema',
-            credsList || 'Nenhuma credencial configurada',
-            [{ text: 'OK' }]
-        );
     };
 
     const LogItem = ({ log }: { log: DebugLog }) => {
@@ -373,11 +386,11 @@ export default function UltraDebugScreen() {
 
                 {log.data && (
                     <TouchableOpacity
-                        onPress={() => Alert.alert('Dados', JSON.stringify(log.data, null, 2))}
+                        onPress={() => Alert.alert('Dados OAuth2', JSON.stringify(log.data, null, 2))}
                         style={styles.logData}
                     >
                         <Text style={[styles.logDataText, { color: Colors.primary }]}>
-                            Ver dados →
+                            Ver dados OAuth2 →
                         </Text>
                     </TouchableOpacity>
                 )}
@@ -398,42 +411,54 @@ export default function UltraDebugScreen() {
                     </TouchableOpacity>
 
                     <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-                        🔬 Ultra Debug v2
+                        🔬 Debug OAuth2 Protheus
                     </Text>
                 </View>
 
                 <ScrollView style={styles.content}>
-                    {/* Status */}
+                    {/* Status OAuth2 */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            ✅ PROBLEMA IDENTIFICADO E CORRIGIDO
-                        </Text>
-
-                        <Text style={[styles.fixedText, { color: '#22c55e' }]}>
-                            Servidor não valida credenciais adequadamente!
-                        </Text>
-
-                        <Text style={[styles.explanationText, { color: theme.colors.textSecondary }]}>
-                            Seu servidor Protheus aceita qualquer credencial no endpoint /healthcheck.
-                            A autenticação agora usa validação local confiável primeiro.
+                            🔐 Status OAuth2 Protheus
                         </Text>
 
                         <View style={styles.statusRow}>
                             <View style={styles.statusItem}>
                                 <Text style={[styles.statusLabel, { color: theme.colors.textSecondary }]}>
-                                    Servidor:
+                                    Servidor OAuth2:
                                 </Text>
                                 <Text style={[styles.statusValue, { color: theme.colors.text }]}>
                                     {connection.baseUrl || 'Não configurado'}
                                 </Text>
                             </View>
+
+                            <View style={styles.statusItem}>
+                                <Text style={[styles.statusLabel, { color: theme.colors.textSecondary }]}>
+                                    Endpoint OAuth2:
+                                </Text>
+                                <Text style={[styles.statusValue, { color: theme.colors.text }]}>
+                                    {connection.baseUrl ? `${connection.baseUrl}/api/oauth2/v1/token` : 'N/A'}
+                                </Text>
+                            </View>
+
+                            <View style={styles.statusItem}>
+                                <Text style={[styles.statusLabel, { color: theme.colors.textSecondary }]}>
+                                    Status:
+                                </Text>
+                                <Text style={[
+                                    styles.statusValue,
+                                    { color: connection.isConnected ? '#22c55e' : '#ef4444' }
+                                ]}>
+                                    {connection.isConnected ? '✅ Conectado' : '❌ Desconectado'}
+                                </Text>
+                            </View>
                         </View>
                     </Card>
 
-                    {/* Credenciais de Teste CORRETAS */}
+                    {/* Credenciais OAuth2 */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            🔑 Credenciais de Teste (CORRIGIDAS)
+                            🔑 Credenciais OAuth2 de Teste
                         </Text>
 
                         <View style={styles.credsRow}>
@@ -471,42 +496,34 @@ export default function UltraDebugScreen() {
                                 />
                             </View>
                         </View>
-
-                        <View style={styles.credsActions}>
-                            <Button
-                                title="📋 Ver Credenciais Válidas"
-                                variant="outline"
-                                size="sm"
-                                onPress={showValidCredentials}
-                            />
-                            <Button
-                                title="➕ Adicionar Credencial"
-                                variant="outline"
-                                size="sm"
-                                onPress={addCustomCredential}
-                            />
-                        </View>
                     </Card>
 
-                    {/* Testes Melhorados */}
+                    {/* Testes OAuth2 */}
                     <Card variant="outlined" style={styles.section}>
                         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                            🧪 Testes de Validação (Melhorados)
+                            🧪 Testes OAuth2 Protheus
                         </Text>
 
                         <View style={styles.testButtons}>
                             <Button
-                                title="🔬 INVESTIGAÇÃO COMPLETA"
-                                onPress={investigateProblem}
+                                title="🔬 TESTE COMPLETO OAUTH2"
+                                onPress={testCompleteOAuth2Flow}
                                 loading={isRunning}
                                 style={styles.primaryButton}
+                            />
+
+                            <Button
+                                title="🔌 Conectividade"
+                                variant="outline"
+                                onPress={quickConnectivityTest}
+                                loading={isRunning}
                             />
 
                             <View style={styles.testRow}>
                                 <Button
                                     title="✅ Teste Corretas"
                                     variant="outline"
-                                    onPress={() => quickTestCredentials(credentials, 'Credenciais CORRETAS')}
+                                    onPress={() => testSpecificCredentials(credentials, 'Credenciais CORRETAS')}
                                     loading={isRunning}
                                     style={styles.testButton}
                                 />
@@ -514,19 +531,19 @@ export default function UltraDebugScreen() {
                                 <Button
                                     title="❌ Teste Erradas"
                                     variant="outline"
-                                    onPress={() => quickTestCredentials(wrongCredentials, 'Credenciais ERRADAS')}
+                                    onPress={() => testSpecificCredentials(wrongCredentials, 'Credenciais ERRADAS')}
                                     loading={isRunning}
                                     style={styles.testButton}
                                 />
                             </View>
 
                             <Button
-                                title="🗑️ Reset Completo"
+                                title="🗑️ Reset OAuth2"
                                 variant="outline"
                                 onPress={async () => {
                                     await authService.clearStorage();
                                     clearLogs();
-                                    showSuccess('Reset completo realizado');
+                                    showSuccess('Storage OAuth2 limpo');
                                 }}
                                 leftIcon={<Ionicons name="trash" size={18} color="#ef4444" />}
                             />
@@ -544,7 +561,7 @@ export default function UltraDebugScreen() {
                     {logs.length > 0 && (
                         <Card variant="outlined" style={styles.section}>
                             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                                📋 Debug Log ({logs.length})
+                                📋 Debug Log OAuth2 ({logs.length})
                             </Text>
 
                             <ScrollView style={styles.logsList} nestedScrollEnabled>
@@ -603,24 +620,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 16,
     },
-    fixedText: {
-        fontSize: 14,
-        fontWeight: '600',
-        textAlign: 'center',
-        marginBottom: 8,
-        padding: 8,
-        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-        borderRadius: 6,
-    },
-    explanationText: {
-        fontSize: 13,
-        textAlign: 'center',
-        lineHeight: 18,
-        marginBottom: 16,
-        padding: 12,
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        borderRadius: 6,
-    },
     statusRow: {
         gap: 8,
     },
@@ -653,15 +652,11 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         textAlign: 'center',
     },
-    credsActions: {
-        flexDirection: 'row',
-        gap: 8,
-    },
     testButtons: {
         gap: 12,
     },
     primaryButton: {
-        backgroundColor: '#22c55e',
+        backgroundColor: '#3b82f6',
     },
     testRow: {
         flexDirection: 'row',

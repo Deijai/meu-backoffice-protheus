@@ -3,6 +3,7 @@ interface RestValidationResult {
     url?: string;
     error?: string;
     statusCode?: number;
+    data?: any
 }
 
 interface RestConfig {
