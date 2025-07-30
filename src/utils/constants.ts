@@ -1,0 +1,80 @@
+export const MOCK_BRANCHES = [
+    {
+        id: '1',
+        code: 'T1M SP 01',
+        name: 'Filial SAO PAULO',
+        location: 'São Paulo, SP',
+        description: 'Matriz São Paulo',
+    },
+    {
+        id: '2',
+        code: 'T1M SP 02',
+        name: 'Filial CAMPINAS',
+        location: 'Campinas, SP',
+        description: 'Filial Campinas',
+    },
+    {
+        id: '3',
+        code: 'T1M PR 01',
+        name: 'Filial CURITIBA',
+        location: 'Curitiba, PR',
+        description: 'Filial Curitiba',
+    },
+    {
+        id: '4',
+        code: 'T1M PR 02',
+        name: 'Filial CASCAVEL',
+        location: 'Cascavel, PR',
+        description: 'Filial Cascavel',
+    },
+    {
+        id: '5',
+        code: 'T1D MG 01',
+        name: 'Filial BELO HOR',
+        location: 'Belo Horizonte, MG',
+        description: 'Filial Belo Horizonte',
+    },
+];
+
+export const MOCK_MODULES = [
+    {
+        id: '1',
+        code: 'SIGAFAT',
+        name: 'Faturamento',
+        icon: 'receipt-outline',
+        description: 'Gestão de vendas e faturamento',
+        color: '#0c9abe',
+    },
+    {
+        id: '2',
+        code: 'SIGAEST',
+        name: 'Estoque',
+        icon: 'cube-outline',
+        description: 'Controle de estoque e movimentações',
+        color: '#38a169',
+    },
+    {
+        id: '3',
+        code: 'SIGAFIN',
+        name: 'Financeiro',
+        icon: 'card-outline',
+        description: 'Gestão financeira e contábil',
+        color: '#d69e2e',
+    },
+    {
+        id: '4',
+        code: 'SIGARH',
+        name: 'Recursos Humanos',
+        icon: 'people-outline',
+        description: 'Gestão de pessoas e RH',
+        color: '#e53e3e',
+    },
+    {
+        id: '5',
+        code: 'SIGACOM',
+        name: 'Compras',
+        icon: 'bag-outline',
+        description: 'Gestão de compras e fornecedores',
+        color: '#805ad5',
+    },
+];
