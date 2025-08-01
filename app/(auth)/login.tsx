@@ -1,8 +1,9 @@
-// app/(auth)/login.tsx - DESIGN RENOVADO COM LOGO
+// app/(auth)/login.tsx - COM ÍCONE DE ENGRENAGEM NO HEADER
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, ImageBackground, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeArea } from '../../src/components/layout/SafeArea';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
@@ -21,6 +22,7 @@ export default function LoginScreen() {
     const { login } = useAuthStore();
     const { canProceedToLogin } = useConfigStore();
     const { showSuccess, showError, showInfo, visible, message, type, hideToast } = useToastStore();
+    const insets = useSafeAreaInsets();
     const {
         authenticate,
         isAvailable: biometricAvailable,
@@ -52,7 +54,7 @@ export default function LoginScreen() {
         if (!canProceedToLogin()) {
             showError('❌ Configuração REST não encontrada. Redirecionando...');
             setTimeout(() => {
-                router.replace('/(auth)/setup');
+                router.replace('/(auth)/setup?fromError=true');
             }, 2000);
         }
     }, []);
@@ -87,6 +89,76 @@ export default function LoginScreen() {
         }
     };
 
+    /**
+     * Detecta se o erro é relacionado ao servidor REST e requer reconfiguração
+     */
+    const isServerRelatedError = (error: any): boolean => {
+        // Verificar códigos de erro de rede/conectividade
+        if (error.code) {
+            const networkErrorCodes = [
+                'ECONNREFUSED',  // Conexão recusada
+                'ECONNABORTED',  // Timeout
+                'ENOTFOUND',     // Servidor não encontrado
+                'ENETUNREACH',   // Rede inacessível
+                'ETIMEDOUT',     // Timeout de conexão
+                'NETWORK_ERROR', // Erro de rede genérico
+            ];
+
+            if (networkErrorCodes.includes(error.code)) {
+                console.log('🔧 Erro de rede detectado:', error.code);
+                return true;
+            }
+        }
+
+        // Verificar mensagens de erro relacionadas ao servidor
+        const errorMessage = (error.message || '').toLowerCase();
+        const serverErrorMessages = [
+            'não foi possível conectar',
+            'servidor não responde',
+            'timeout na conexão',
+            'conexão recusada',
+            'servidor não encontrado',
+            'erro de conexão',
+            'network error',
+            'failed to fetch',
+            'servidor demorou',
+            'não acessível',
+        ];
+
+        if (serverErrorMessages.some(msg => errorMessage.includes(msg))) {
+            console.log('🔧 Mensagem de erro de servidor:', errorMessage);
+            return true;
+        }
+
+        // Verificar se tem response com status de erro de servidor
+        if (error.response) {
+            const status = error.response.status;
+
+            // Status codes que podem indicar problema de configuração
+            const serverStatusCodes = [
+                0,   // Sem conexão
+                502, // Bad Gateway
+                503, // Service Unavailable
+                504, // Gateway Timeout
+                // Note: 401 e 400 são erros de credenciais, não de servidor
+            ];
+
+            if (serverStatusCodes.includes(status)) {
+                console.log('🔧 Status de erro de servidor:', status);
+                return true;
+            }
+        }
+
+        // Se erro não tem resposta e não é de credenciais, pode ser servidor
+        if (!error.response && !errorMessage.includes('senha') && !errorMessage.includes('usuário')) {
+            console.log('🔧 Erro sem resposta, possivelmente servidor');
+            return true;
+        }
+
+        console.log('ℹ️ Erro não relacionado ao servidor REST');
+        return false;
+    };
+
     const validateForm = (): boolean => {
         const errors: Record<string, string> = {};
 
@@ -114,6 +186,7 @@ export default function LoginScreen() {
 
         if (!canProceedToLogin()) {
             showError('❌ Configuração REST não encontrada');
+            router.replace('/(auth)/setup?fromError=true');
             return;
         }
 
@@ -188,7 +261,22 @@ export default function LoginScreen() {
         } catch (error: any) {
             console.error('❌ ERRO NO LOGIN:', error);
 
-            // Tratar diferentes tipos de erro com mensagens específicas
+            // Verificar se é erro de servidor REST que requer reconfiguração
+            const isServerError = isServerRelatedError(error);
+
+            if (isServerError) {
+                console.log('🔧 Erro de servidor detectado - Redirecionando para configuração REST');
+                showError('❌ Problema de conexão com servidor. Redirecionando para configuração...');
+
+                // Aguardar um pouco para mostrar o erro
+                setTimeout(() => {
+                    router.replace('/(auth)/setup?fromError=true');
+                }, 2000);
+
+                return; // Sair da função
+            }
+
+            // Tratar outros tipos de erro com mensagens específicas
             let errorMessage = 'Erro na autenticação';
 
             if (error.message) {
@@ -247,6 +335,20 @@ export default function LoginScreen() {
         } catch (error: any) {
             console.error('❌ Erro no auto login:', error);
 
+            // Verificar se é erro de servidor REST
+            const isServerError = isServerRelatedError(error);
+
+            if (isServerError) {
+                console.log('🔧 Erro de servidor no auto login - Redirecionando para configuração REST');
+                showError('❌ Problema de conexão detectado. Redirecionando para configuração...');
+
+                setTimeout(() => {
+                    router.replace('/(auth)/setup?fromError=true');
+                }, 2000);
+
+                return;
+            }
+
             let errorMessage = error.message || 'Erro no login automático';
             if (!errorMessage.startsWith('❌')) {
                 errorMessage = `❌ ${errorMessage}`;
@@ -282,7 +384,16 @@ export default function LoginScreen() {
             }
         } catch (error) {
             console.error('❌ Erro na biometria:', error);
-            showError('❌ Erro na autenticação biométrica');
+
+            // Se erro for de servidor, redirecionar para setup
+            if (isServerRelatedError(error)) {
+                showError('❌ Problema de conexão. Redirecionando para configuração...');
+                setTimeout(() => {
+                    router.replace('/(auth)/setup?fromError=true');
+                }, 2000);
+            } else {
+                showError('❌ Erro na autenticação biométrica');
+            }
         }
     };
 
@@ -310,9 +421,6 @@ export default function LoginScreen() {
                 <View style={[
                     styles.overlay,
                     {
-                        // backgroundColor: theme.colors.background === '#ffffff'
-                        //     ? 'rgba(255, 255, 255, 0.85)'
-                        //     : 'rgba(26, 32, 44, 0.85)'
                         backgroundColor: 'transparent'
                     }
                 ]} />
@@ -326,6 +434,21 @@ export default function LoginScreen() {
                             transparent
                         />
                     )}
+
+                    {/* ⚙️ ÍCONE DE CONFIGURAÇÕES NO HEADER */}
+                    <TouchableOpacity
+                        onPress={() => router.push('/(auth)/setup')}
+                        style={[
+                            styles.settingsButton,
+                            {
+                                top: insets.top + 16,
+                                backgroundColor: theme.colors.background === '#ffffff' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(45, 55, 72, 0.9)'
+                            }
+                        ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                        <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+                    </TouchableOpacity>
 
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                         {/* Header/Logo */}
@@ -344,16 +467,6 @@ export default function LoginScreen() {
                                 Protheus
                             </Text>
                         </View>
-
-                        {/* Welcome Message */}
-                        {/* <View style={styles.welcomeSection}>
-                            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>
-                                Bem-vindo de volta
-                            </Text>
-                            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textSecondary }]}>
-                                Entre com suas credenciais para continuar
-                            </Text>
-                        </View> */}
 
                         {/* Auto Login Card */}
                         {showAutoLoginOptions && autoLoginUser && (
@@ -509,6 +622,22 @@ const styles = StyleSheet.create({
         flex: 1,
         zIndex: 2,
     },
+    // ⚙️ ESTILO DO ÍCONE DE CONFIGURAÇÕES
+    settingsButton: {
+        position: 'absolute',
+        right: 24,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+    },
     content: {
         flex: 1,
     },
@@ -530,17 +659,10 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        // marginBottom: 16,
-        // shadowColor: Colors.primary,
-        // shadowOffset: { width: 0, height: 4 },
-        // shadowOpacity: 0.3,
-        // shadowRadius: 8,
-        // elevation: 8,
     },
     logoImage: {
         width: 60,
         height: 60,
-        //tintColor: '#ffffff', // Deixa a imagem branca para contrastar com o fundo
     },
     appTitle: {
         fontSize: 24,
@@ -550,23 +672,6 @@ const styles = StyleSheet.create({
     appSubtitle: {
         fontSize: 16,
         fontWeight: '500',
-    },
-
-    // Welcome Section
-    welcomeSection: {
-        alignItems: 'center',
-        marginBottom: 32,
-    },
-    welcomeTitle: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        marginBottom: 8,
-        textAlign: 'center',
-    },
-    welcomeSubtitle: {
-        fontSize: 16,
-        textAlign: 'center',
-        lineHeight: 22,
     },
 
     // Auto Login Card
