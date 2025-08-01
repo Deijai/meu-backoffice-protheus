@@ -1,4 +1,4 @@
-// app/(auth)/login.tsx - COM ÍCONE DE ENGRENAGEM NO HEADER
+// app/(auth)/login.tsx - COM ÍCONE DE ENGRENAGEM NO HEADER - CORRIGIDO
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -9,16 +9,16 @@ import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
 import { useBiometric } from '../../src/hooks/useBiometric';
-import { useTheme } from '../../src/hooks/useTheme';
 import { authService } from '../../src/services/api/authService';
 import { httpService } from '../../src/services/api/httpService';
 import { useAuthStore } from '../../src/store/authStore';
 import { useConfigStore } from '../../src/store/configStore';
+import { useThemeStore } from '../../src/store/themeStore';
 import { useToastStore } from '../../src/store/toastStore';
 import { Colors } from '../../src/styles/colors';
 
 export default function LoginScreen() {
-    const { theme } = useTheme();
+    const { theme } = useThemeStore();
     const { login } = useAuthStore();
     const { canProceedToLogin } = useConfigStore();
     const { showSuccess, showError, showInfo, visible, message, type, hideToast } = useToastStore();

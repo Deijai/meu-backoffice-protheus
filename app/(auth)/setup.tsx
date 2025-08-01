@@ -9,12 +9,12 @@ import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Modal } from '../../src/components/ui/Modal';
 import { useRestValidation } from '../../src/hooks/useRestValidation';
-import { useTheme } from '../../src/hooks/useTheme';
+import { useThemeStore } from '../../src/store/themeStore';
 import { useToastStore } from '../../src/store/toastStore';
 import { Colors } from '../../src/styles/colors';
 
 export default function SetupScreen() {
-    const { theme } = useTheme();
+    const { theme } = useThemeStore();
     const {
         connection,
         isTestingConnection,
@@ -348,14 +348,6 @@ export default function SetupScreen() {
                         ))}
                     </View>
                 </Modal>
-
-                {/* Toast */}
-                {/* <Toast
-                    visible={visible}
-                    message={message}
-                    type={type}
-                    onHide={hideToast}
-                /> */}
             </View>
         </SafeArea>
     );

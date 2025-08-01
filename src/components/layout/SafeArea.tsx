@@ -1,6 +1,6 @@
 import React from 'react';
 import { SafeAreaView, StatusBar, StyleSheet } from 'react-native';
-import { useTheme } from '../../providers/ThemeProvider';
+import { useThemeStore } from '../../store/themeStore';
 
 interface SafeAreaProps {
     children: React.ReactNode;
@@ -11,7 +11,7 @@ export const SafeArea: React.FC<SafeAreaProps> = ({
     children,
     edges = ['top', 'bottom']
 }) => {
-    const { theme, isDark } = useTheme();
+    const { theme, isDark } = useThemeStore();
 
     // Verificação de segurança para garantir que theme.colors existe
     const backgroundColor = theme?.colors?.background || '#ffffff';

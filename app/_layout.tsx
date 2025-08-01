@@ -3,7 +3,6 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Toast } from '../src/components/ui/Toast';
-import { ThemeProvider } from '../src/providers/ThemeProvider';
 import { useToastStore } from '../src/store/toastStore';
 
 SplashScreen.preventAutoHideAsync();
@@ -40,7 +39,6 @@ export default function RootLayout() {
         PoppinsBold: require("../assets/fonts/Poppins-Bold.ttf"),
     });
 
-
     useEffect(() => {
         if (loaded) {
             SplashScreen.hideAsync();
@@ -51,9 +49,5 @@ export default function RootLayout() {
         return null;
     }
 
-    return (
-        <ThemeProvider>
-            <RootLayoutNav />
-        </ThemeProvider>
-    );
+    return <RootLayoutNav />;
 }

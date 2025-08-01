@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeArea } from '../../src/components/layout/SafeArea';
 import { Button } from '../../src/components/ui/Button';
-import { useTheme } from '../../src/hooks/useTheme';
 import { useConfigStore } from '../../src/store/configStore';
+import { useThemeStore } from '../../src/store/themeStore';
 import { Colors } from '../../src/styles/colors';
 
 const { width } = Dimensions.get('window');
@@ -34,7 +34,7 @@ const onboardingSteps = [
 ];
 
 export default function OnboardingScreen() {
-    const { theme } = useTheme();
+    const { theme } = useThemeStore();
     const { setOnboardingCompleted, setFirstLaunch } = useConfigStore();
     const [currentStep, setCurrentStep] = useState(0);
 

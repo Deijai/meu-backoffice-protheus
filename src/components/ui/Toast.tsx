@@ -9,7 +9,7 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../hooks/useTheme';
+import { useThemeStore } from '../../store/themeStore';
 
 const { width } = Dimensions.get('window');
 
@@ -30,7 +30,7 @@ export const Toast: React.FC<ToastProps> = ({
     position = 'top',
     onHide,
 }) => {
-    const { theme } = useTheme();
+    const { theme } = useThemeStore();
     const insets = useSafeAreaInsets();
     const translateY = useRef(new Animated.Value(position === 'top' ? -100 : 100)).current;
     const opacity = useRef(new Animated.Value(0)).current;
