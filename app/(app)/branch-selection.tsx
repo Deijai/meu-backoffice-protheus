@@ -304,6 +304,7 @@ const styles = StyleSheet.create({
     headerTop: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         marginBottom: 16,
     },
     backButton: {
@@ -332,7 +333,7 @@ const styles = StyleSheet.create({
     },
     searchContainer: {
         paddingHorizontal: 24,
-        marginBottom: 16,
+        marginBottom: 5,
     },
     content: {
         flex: 1,
