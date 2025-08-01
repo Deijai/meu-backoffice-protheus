@@ -1,3 +1,4 @@
+import { Header } from '@/src/components/layout/Header';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -48,18 +49,17 @@ export default function SetupScreen() {
         <SafeArea>
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity
-                        onPress={() => router.back()}
-                        style={[styles.backButton, { backgroundColor: theme.colors.surface }]}
-                    >
-                        <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-                    </TouchableOpacity>
-
-                    <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
-                        <Ionicons name="server-outline" size={24} color="#ffffff" />
-                    </View>
-                </View>
+                <Header
+                    title="Configuração do Servidor"
+                    subtitle="Configure a conexão com o Meu Backoffice Protheus"
+                    showBackButton={true}
+                    onBackPress={() => router.back()}
+                    rightElement={
+                        <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
+                            <Ionicons name="server-outline" size={24} color="#ffffff" />
+                        </View>
+                    }
+                />
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     <Text style={[styles.title, { color: theme.colors.text }]}>

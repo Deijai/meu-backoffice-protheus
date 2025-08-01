@@ -1,4 +1,4 @@
-// src/services/api/authService.ts - CORREÇÃO STATUS 201
+// src/services/api/authService.ts - REFRESH TOKEN CORRIGIDO TOTVS
 import axios from 'axios';
 import { useConfigStore } from '../../store/configStore';
 import { asyncStorageService } from '../storage/asyncStorage';
@@ -57,9 +57,8 @@ export class AuthService {
             throw new Error('❌ Configuração REST não encontrada');
         }
 
-        console.log('🔄 === LOGIN OAUTH2 INICIADO (VERSÃO CORRIGIDA) ===');
+        console.log('🔄 === LOGIN OAUTH2 INICIADO ===');
         console.log('👤 Usuário:', credentials.username);
-        console.log('🔒 Senha:', credentials.password.replace(/./g, '*'));
         console.log('🌐 URL Base:', connection.baseUrl);
 
         const oauthUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=password`;
@@ -77,7 +76,7 @@ export class AuthService {
                 timeout: 15000,
                 validateStatus: (status) => {
                     console.log(`📡 STATUS RECEBIDO: ${status}`);
-                    return status < 500; // Aceitar qualquer status < 500
+                    return status < 500;
                 },
             });
 
@@ -91,11 +90,6 @@ export class AuthService {
 
                 if (response.data?.access_token) {
                     console.log('🔑 TOKEN ENCONTRADO - Login VÁLIDO');
-                    console.log('🔑 Token Type:', response.data.token_type);
-                    console.log('⏰ Expires In:', response.data.expires_in);
-                    console.log('🔄 Refresh Token:', !!response.data.refresh_token);
-                    console.log('🔒 Scope:', response.data.scope);
-                    console.log('🛡️ MFA:', response.data.hasMFA);
 
                     // CRIAR USUÁRIO AUTENTICADO
                     const tokenExpiresAt = new Date(Date.now() + (response.data.expires_in * 1000)).toISOString();
@@ -110,7 +104,6 @@ export class AuthService {
                         token_type: response.data.token_type,
                         expires_in: response.data.expires_in,
                         tokenExpiresAt,
-                        // Salvar senha para auto login se keepConnected
                         password: credentials.keepConnected ? credentials.password : undefined,
                     };
 
@@ -119,24 +112,20 @@ export class AuthService {
                     return authUser;
 
                 } else {
-                    console.log(`❌ Status ${response.status} mas SEM TOKEN - Possível erro do servidor`);
-                    console.log('📄 Dados recebidos:', response.data);
+                    console.log(`❌ Status ${response.status} mas SEM TOKEN`);
                     throw new Error(`❌ Servidor retornou status ${response.status} mas sem token de acesso`);
                 }
 
             } else if (response.status === 401) {
-                console.log('❌ Status 401 - CREDENCIAIS REJEITADAS pelo servidor');
-                console.log('📄 Dados do erro:', response.data);
+                console.log('❌ Status 401 - CREDENCIAIS REJEITADAS');
                 throw new Error('❌ Usuário ou senha incorretos');
 
             } else if (response.status === 400) {
                 console.log('❌ Status 400 - REQUISIÇÃO INVÁLIDA');
-                console.log('📄 Dados do erro:', response.data);
                 throw new Error('❌ Dados de login inválidos');
 
             } else {
                 console.log(`❌ Status inesperado: ${response.status}`);
-                console.log('📄 Dados:', response.data);
 
                 // SE TEM TOKEN, ACEITAR MESMO COM STATUS DIFERENTE
                 if (response.data?.access_token) {
@@ -170,10 +159,6 @@ export class AuthService {
             console.error('🚨 Tipo do erro:', error.constructor.name);
             console.error('🚨 Mensagem:', error.message);
 
-            if (error.code) {
-                console.error('🚨 Código:', error.code);
-            }
-
             if (error.response) {
                 console.error('🚨 Response Status:', error.response.status);
                 console.error('🚨 Response Data:', error.response.data);
@@ -203,6 +188,102 @@ export class AuthService {
             } else {
                 throw new Error(`❌ Erro inesperado: ${error.message}`);
             }
+        }
+    }
+
+    /**
+     * *** REFRESH TOKEN CORRIGIDO PARA TOTVS PROTHEUS ***
+     * Endpoint: /tlpp/oauth2/token
+     * Parâmetros: refresh_token e grant_type na query string
+     */
+    async refreshToken(): Promise<AuthUser> {
+        const currentUser = await this.getCurrentUser();
+
+        if (!currentUser || !currentUser.refresh_token) {
+            throw new Error('❌ Nenhum refresh token disponível');
+        }
+
+        const { connection } = useConfigStore.getState();
+
+        // ENDPOINT CORRETO DO TOTVS PROTHEUS
+        const refreshUrl = `${connection.baseUrl}/tlpp/oauth2/token`;
+
+        console.log('🔄 === REFRESH TOKEN TOTVS PROTHEUS INICIADO ===');
+        console.log('🔗 URL:', refreshUrl);
+        console.log('🔑 Refresh Token:', currentUser.refresh_token.substring(0, 20) + '...');
+
+        try {
+            // ENVIAR PARÂMETROS NA QUERY STRING CONFORME DOCUMENTAÇÃO TOTVS
+            const response = await axios.post(refreshUrl, {}, {
+                params: {
+                    refresh_token: currentUser.refresh_token,
+                    grant_type: 'refresh_token'
+                },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentUser.access_token}`,
+                },
+                timeout: 10000,
+                validateStatus: (status) => {
+                    console.log(`📡 Refresh Status: ${status}`);
+                    return status < 500;
+                },
+            });
+
+            console.log('📊 === RESPOSTA DO REFRESH TOKEN ===');
+            console.log('📡 Status:', response.status);
+            console.log('📄 Data:', JSON.stringify(response.data, null, 2));
+
+            // VERIFICAR SE REFRESH FOI BEM-SUCEDIDO
+            if ((response.status === 200 || response.status === 201) && response.data?.access_token) {
+                console.log('✅ REFRESH TOKEN BEM-SUCEDIDO');
+
+                const oauthData: OAuth2Response = response.data;
+
+                // Atualizar dados do usuário
+                const updatedUser: AuthUser = {
+                    ...currentUser,
+                    access_token: oauthData.access_token,
+                    refresh_token: oauthData.refresh_token || currentUser.refresh_token, // Manter o antigo se não vier novo
+                    expires_in: oauthData.expires_in,
+                    tokenExpiresAt: new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString(),
+                    lastLogin: new Date().toISOString(),
+                };
+
+                await this.saveAuthenticatedUser(updatedUser);
+
+                console.log('✅ Token renovado com sucesso');
+                console.log('🔑 Novo token:', updatedUser.access_token.substring(0, 20) + '...');
+                console.log('⏰ Expira em:', updatedUser.expires_in, 'segundos');
+
+                return updatedUser;
+
+            } else {
+                console.error('❌ Refresh token falhou:', response.status, response.data);
+                throw new Error(`❌ Refresh token falhou: Status ${response.status}`);
+            }
+
+        } catch (error: any) {
+            console.error('🚨 === ERRO NO REFRESH TOKEN ===');
+            console.error('🚨 Erro completo:', error);
+
+            if (error.response) {
+                console.error('📡 Status:', error.response.status);
+                console.error('📄 Data:', error.response.data);
+
+                // VERIFICAR SE É "token expired" CONFORME DOCUMENTAÇÃO
+                const errorMessage = error.response.data?.error || error.response.data?.message || '';
+
+                if (errorMessage.toLowerCase().includes('token expired') ||
+                    errorMessage.toLowerCase().includes('expired') ||
+                    error.response.status === 401) {
+                    console.log('🔓 Token realmente expirado, forçando novo login');
+                }
+            }
+
+            // Se refresh falhar, forçar novo login
+            await this.signOut();
+            throw new Error('❌ Sessão expirada, faça login novamente');
         }
     }
 
@@ -273,63 +354,6 @@ export class AuthService {
     }
 
     /**
-     * REFRESH TOKEN
-     */
-    async refreshToken(): Promise<AuthUser> {
-        const currentUser = await this.getCurrentUser();
-
-        if (!currentUser || !currentUser.refresh_token) {
-            throw new Error('❌ Nenhum refresh token disponível');
-        }
-
-        const { connection } = useConfigStore.getState();
-        const refreshUrl = `${connection.baseUrl}/api/oauth2/v1/token?grant_type=refresh_token`;
-
-        console.log('🔄 Renovando token OAuth2...');
-
-        try {
-            const response = await axios.post(refreshUrl, {
-                refresh_token: currentUser.refresh_token,
-            }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${currentUser.access_token}`,
-                },
-                timeout: 10000,
-                validateStatus: (status) => status < 500,
-            });
-
-            if ((response.status !== 200 && response.status !== 201) || !response.data.access_token) {
-                throw new Error(`Erro ${response.status} no refresh token`);
-            }
-
-            const oauthData: OAuth2Response = response.data;
-
-            // Atualizar dados do usuário
-            const updatedUser: AuthUser = {
-                ...currentUser,
-                access_token: oauthData.access_token,
-                refresh_token: oauthData.refresh_token || currentUser.refresh_token,
-                expires_in: oauthData.expires_in,
-                tokenExpiresAt: new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString(),
-                lastLogin: new Date().toISOString(),
-            };
-
-            await this.saveAuthenticatedUser(updatedUser);
-
-            console.log('✅ Token renovado com sucesso');
-            return updatedUser;
-
-        } catch (error: any) {
-            console.error('❌ Erro no refresh token:', error);
-
-            // Se refresh falhar, forçar novo login
-            await this.signOut();
-            throw new Error('❌ Sessão expirada, faça login novamente');
-        }
-    }
-
-    /**
      * VERIFICAR SEGURANÇA DO SERVIDOR
      */
     async checkSecurity(): Promise<boolean> {
@@ -364,7 +388,6 @@ export class AuthService {
             });
 
             console.log('🔒 Status do teste de segurança:', response.status);
-            console.log('🔒 Data:', response.data);
 
             if (response.status === 401) {
                 console.log('✅ SERVIDOR SEGURO: Rejeitou credenciais falsas (401)');
@@ -375,7 +398,6 @@ export class AuthService {
             } else if (response.status === 200 || response.status === 201) {
                 if (response.data?.access_token) {
                     console.log('🚨 PROBLEMA CRÍTICO: Servidor aceitou credenciais FALSAS!');
-                    console.log('🚨 Token recebido:', response.data.access_token.substring(0, 20) + '...');
                     return false; // SERVIDOR NÃO É SEGURO!
                 } else {
                     console.log('✅ Servidor funcionando (sem token)');
@@ -400,7 +422,7 @@ export class AuthService {
     }
 
     /**
-     * TESTE DE CREDENCIAIS SEM SALVAR - ACEITA 200 E 201
+     * TESTE DE CREDENCIAIS SEM SALVAR
      */
     async testCredentialsOnly(credentials: LoginCredentials): Promise<{
         success: boolean;
@@ -422,7 +444,6 @@ export class AuthService {
 
         console.log('🧪 === TESTE DE CREDENCIAIS INICIADO ===');
         console.log('👤 Username:', credentials.username);
-        console.log('🔒 Password:', credentials.password.replace(/./g, '*'));
         console.log('🔗 URL:', oauthUrl);
 
         try {
@@ -447,7 +468,6 @@ export class AuthService {
             console.log('🧪 === RESULTADO DO TESTE ===');
             console.log(`⏱️ Tempo de resposta: ${responseTime}ms`);
             console.log('📡 Status:', response.status);
-            console.log('📊 Data:', JSON.stringify(response.data, null, 2));
 
             const debugInfo = {
                 status: response.status,
@@ -479,7 +499,6 @@ export class AuthService {
 
         } catch (error: any) {
             console.error('🧪 === ERRO NO TESTE ===');
-            console.error('Erro completo:', error);
 
             let errorMessage = 'Erro na requisição';
             let debugInfo: any = {
@@ -515,6 +534,38 @@ export class AuthService {
         }
     }
 
+    /**
+     * DETECTAR SE PRECISA REFRESH TOKEN
+     * Verifica mensagens como "token expired" conforme documentação TOTVS
+     */
+    static isTokenExpiredError(error: any): boolean {
+        if (!error || !error.response) {
+            return false;
+        }
+
+        const status = error.response.status;
+        const data = error.response.data;
+
+        // Status 401 geralmente indica token expirado
+        if (status === 401) {
+            return true;
+        }
+
+        // Verificar mensagens específicas do TOTVS
+        if (data) {
+            const errorMessage = (data.error || data.message || '').toLowerCase();
+
+            if (errorMessage.includes('token expired') ||
+                errorMessage.includes('expired') ||
+                errorMessage.includes('invalid token') ||
+                errorMessage.includes('unauthorized')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // ... resto dos métodos iguais (saveAuthenticatedUser, signOut, getCurrentUser, etc.)
 
     private async saveAuthenticatedUser(authUser: AuthUser): Promise<void> {
@@ -541,7 +592,9 @@ export class AuthService {
             const currentUser = await this.getCurrentUser();
             if (currentUser?.access_token) {
                 const { connection } = useConfigStore.getState();
-                const revokeUrl = `${connection.baseUrl}/api/oauth2/v1/revoke`;
+
+                // ENDPOINT CORRETO PARA REVOKE NO TOTVS (se existir)
+                const revokeUrl = `${connection.baseUrl}/tlpp/oauth2/revoke`;
 
                 await axios.post(revokeUrl, {}, {
                     headers: {
@@ -631,12 +684,8 @@ export class AuthService {
             hasToken: !!this.currentUser?.access_token,
             tokenValid: this.currentUser ? this.isTokenValid() : false,
             tokenExpiresAt: this.currentUser?.tokenExpiresAt || null,
+            hasRefreshToken: !!this.currentUser?.refresh_token,
         };
-    }
-
-    // Alias para compatibilidade
-    async ['getStoredUsers'](): Promise<AuthUser[]> {
-        return this.getSavedUsers();
     }
 }
 

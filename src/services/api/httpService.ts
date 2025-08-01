@@ -1,4 +1,4 @@
-// src/services/api/httpService.ts
+// src/services/api/httpService.ts - REFRESH TOKEN TOTVS CORRIGIDO
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { useConfigStore } from '../../store/configStore';
 import { authService, AuthType } from './authService';
@@ -74,7 +74,7 @@ class HttpService {
             }
         );
 
-        // Response interceptor - trata respostas e erros
+        // Response interceptor - trata respostas e erros com REFRESH TOKEN TOTVS
         this.axiosInstance.interceptors.response.use(
             (response: AxiosResponse) => {
                 console.log('✅ Response:', response.status, response.config.url);
@@ -85,9 +85,14 @@ class HttpService {
 
                 console.error('❌ Response Error:', error.response?.status, error.config?.url);
 
-                // Handle 401 - Token expirado
-                if (error.response?.status === 401 && !originalRequest._retry) {
+                // *** DETECTAR TOKEN EXPIRADO CONFORME TOTVS PROTHEUS ***
+                if (this.isTokenExpiredError(error) && !originalRequest._retry) {
+                    console.log('🔄 === TOKEN EXPIRADO DETECTADO (TOTVS) ===');
+                    console.log('📡 Status:', error.response?.status);
+                    console.log('📄 Data:', error.response?.data);
+
                     if (this.isRefreshing) {
+                        console.log('⏳ Refresh já em andamento, adicionando à fila...');
                         // Se já está refreshing, adiciona à fila
                         return new Promise((resolve, reject) => {
                             this.failedQueue.push({ resolve, reject });
@@ -104,23 +109,38 @@ class HttpService {
                     try {
                         // Tenta refresh token se for OAUTH2
                         if (authService.getAuthType() === AuthType.OAUTH2) {
-                            await authService.refreshToken();
+                            console.log('🔄 Tentando refresh token TOTVS...');
+
+                            const refreshedUser = await authService.refreshToken();
+                            console.log('✅ Token TOTVS refreshed com sucesso');
 
                             // Processa fila de requisições que falharam
-                            this.processQueue(null);
+                            this.processQueue(null, refreshedUser.access_token);
+
+                            // Atualizar header da requisição original
+                            originalRequest.headers.Authorization = `Bearer ${refreshedUser.access_token}`;
 
                             // Retry da requisição original
                             return this.axiosInstance(originalRequest);
                         } else {
                             // Para BASIC, força logout
+                            console.log('❌ Não é OAuth2, forçando logout');
                             await authService.signOut();
                             this.processQueue(new Error('Session expired'), null);
                             return Promise.reject(error);
                         }
-                    } catch (refreshError) {
+                    } catch (refreshError: any) {
+                        console.error('❌ === FALHA NO REFRESH TOKEN TOTVS ===');
+                        console.error('Erro:', refreshError);
+
                         this.processQueue(refreshError, null);
+
+                        // Forçar logout se refresh falhou
                         await authService.signOut();
-                        return Promise.reject(refreshError);
+
+                        // Retornar erro mais específico
+                        const newError = new Error('❌ Sessão expirada. Faça login novamente.');
+                        return Promise.reject(newError);
                     } finally {
                         this.isRefreshing = false;
                     }
@@ -132,9 +152,54 @@ class HttpService {
     }
 
     /**
+     * *** DETECTAR TOKEN EXPIRADO CONFORME TOTVS PROTHEUS ***
+     * Verifica status 401 e mensagens específicas como "token expired"
+     */
+    private isTokenExpiredError(error: any): boolean {
+        if (!error || !error.response) {
+            return false;
+        }
+
+        const status = error.response.status;
+        const data = error.response.data;
+
+        console.log('🔍 Verificando se é token expirado TOTVS:');
+        console.log('📡 Status:', status);
+        console.log('📄 Data:', data);
+
+        // Status 401 geralmente indica token expirado no TOTVS
+        if (status === 401) {
+            console.log('✅ Status 401 detectado - Token expirado TOTVS');
+            return true;
+        }
+
+        // Verificar mensagens específicas do TOTVS Protheus
+        if (data) {
+            const errorMessage = (data.error || data.message || data.errorMessage || '').toLowerCase();
+            console.log('🔍 Mensagem de erro:', errorMessage);
+
+            if (errorMessage.includes('token expired') ||
+                errorMessage.includes('expired') ||
+                errorMessage.includes('invalid token') ||
+                errorMessage.includes('unauthorized') ||
+                errorMessage.includes('token inválido') ||
+                errorMessage.includes('sessão expirada') ||
+                errorMessage.includes('session expired')) {
+                console.log('✅ Mensagem de token expirado detectada TOTVS');
+                return true;
+            }
+        }
+
+        console.log('❌ Não é erro de token expirado');
+        return false;
+    }
+
+    /**
      * Processa fila de requisições após refresh token
      */
     private processQueue(error: any, token: string | null = null): void {
+        console.log(`🔄 Processando fila de requisições: ${this.failedQueue.length} pendentes`);
+
         this.failedQueue.forEach(({ resolve, reject }) => {
             if (error) {
                 reject(error);
@@ -144,6 +209,7 @@ class HttpService {
         });
 
         this.failedQueue = [];
+        console.log('✅ Fila de requisições processada');
     }
 
     /**
@@ -153,6 +219,7 @@ class HttpService {
         const { connection } = useConfigStore.getState();
         if (connection.baseUrl) {
             this.axiosInstance.defaults.baseURL = connection.baseUrl;
+            console.log('🔗 Base URL atualizada:', connection.baseUrl);
         }
     }
 
@@ -188,9 +255,22 @@ class HttpService {
         }
 
         if (error.response) {
+            // Verificar se é erro de token expirado para dar mensagem mais clara
+            if (this.isTokenExpiredError(error)) {
+                return {
+                    success: false,
+                    error: 'Sessão expirada. Fazendo login automaticamente...',
+                    status: error.response.status,
+                    data: error.response.data,
+                };
+            }
+
             return {
                 success: false,
-                error: error.response.data?.message || error.response.statusText || 'Erro na requisição',
+                error: error.response.data?.message ||
+                    error.response.data?.error ||
+                    error.response.statusText ||
+                    'Erro na requisição',
                 status: error.response.status,
                 data: error.response.data,
             };
@@ -326,8 +406,10 @@ class HttpService {
      * Cancela todas as requisições pendentes
      */
     cancelAllRequests(): void {
-        // Axios não tem método nativo para isso, mas podemos implementar se necessário
-        console.log('Cancelando todas as requisições...');
+        console.log('🚫 Cancelando todas as requisições...');
+        // Limpar fila de refresh
+        this.failedQueue = [];
+        this.isRefreshing = false;
     }
 
     /**
@@ -342,6 +424,20 @@ class HttpService {
      */
     removeDefaultHeader(key: string): void {
         delete this.axiosInstance.defaults.headers.common[key];
+    }
+
+    /**
+     * Obter estatísticas do serviço
+     */
+    getStats() {
+        return {
+            baseURL: this.getBaseURL(),
+            timeout: this.getDefaultTimeout(),
+            isRefreshing: this.isRefreshing,
+            queueSize: this.failedQueue.length,
+            hasAuthToken: !!authService.getAuthToken(),
+            authType: authService.getAuthType(),
+        };
     }
 }
 
