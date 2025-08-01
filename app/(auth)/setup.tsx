@@ -56,18 +56,19 @@ export default function SetupScreen() {
                     onBackPress={() => router.back()}
                     rightElement={
                         <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
-                            <Ionicons name="server-outline" size={24} color="#ffffff" />
+                            <Ionicons name="server-outline" size={15} color="#ffffff" />
                         </View>
                     }
                 />
+                <View style={{ height: 10 }}></View>
 
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    <Text style={[styles.title, { color: theme.colors.text }]}>
+                    {/* <Text style={[styles.title, { color: theme.colors.text }]}>
                         Configuração do Servidor
                     </Text>
                     <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
                         Configure a conexão com o Meu Backoffice Protheus
-                    </Text>
+                    </Text> */}
 
                     {/* Connection Status */}
                     {connection.isConnected && connection.isValid && (
@@ -373,15 +374,15 @@ const styles = StyleSheet.create({
         marginRight: 16,
     },
     iconContainer: {
-        width: 48,
-        height: 48,
+        width: 40,
+        height: 40,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
     },
     content: {
         flex: 1,
-        paddingHorizontal: 24,
+        paddingHorizontal: 16,
     },
     title: {
         fontSize: 24,

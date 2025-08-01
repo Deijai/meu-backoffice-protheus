@@ -1,4 +1,5 @@
 // app/(app)/branch-selection.tsx - VERSÃO SIMPLIFICADA COM HOOK
+import { Header } from '@/src/components/layout/Header';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
@@ -188,7 +189,7 @@ export default function BranchSelectionScreen() {
         <SafeArea>
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 {/* Header */}
-                <View style={styles.header}>
+                {/* <View style={styles.header}>
                     <View style={styles.headerTop}>
                         <TouchableOpacity
                             onPress={() => router.back()}
@@ -208,7 +209,21 @@ export default function BranchSelectionScreen() {
                     <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
                         Olá, {user?.name || user?.username}! Escolha sua filial do Protheus.
                     </Text>
-                </View>
+
+
+                </View> */}
+
+                <Header
+                    title=" Selecionar Filial"
+                    subtitle="Escolha sua filial"
+                    showBackButton={true}
+                    onBackPress={() => router.back()}
+                    rightElement={
+                        <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
+                            <Ionicons name="business-outline" size={24} color="#ffffff" />
+                        </View>
+                    }
+                />
 
                 {/* Search */}
                 <View style={styles.searchContainer}>

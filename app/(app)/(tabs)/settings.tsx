@@ -8,12 +8,14 @@ import { Card } from '../../../src/components/ui/Card';
 import { useAuthStore } from '../../../src/store/authStore';
 import { useConfigStore } from '../../../src/store/configStore';
 import { useThemeStore } from '../../../src/store/themeStore';
+import { useToastStore } from '../../../src/store/toastStore';
 import { Colors } from '../../../src/styles/colors';
 
 export default function SettingsScreen() {
     const { theme, isDark, toggleTheme } = useThemeStore();
-    const { biometricEnabled, logout } = useAuthStore();
+    const { biometricEnabled, logout, selectedBranch, selectedModule, setBranch, setModule } = useAuthStore();
     const { resetConfig } = useConfigStore();
+    const { showSuccess, showInfo, showWarning } = useToastStore();
 
     const handleResetApp = () => {
         Alert.alert(
@@ -28,6 +30,55 @@ export default function SettingsScreen() {
                         resetConfig();
                         logout();
                         router.replace('/(auth)/onboarding');
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleChangeBranch = () => {
+        Alert.alert(
+            'Trocar de Filial',
+            'Você será redirecionado para selecionar uma nova filial e módulo. Deseja continuar?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Continuar',
+                    onPress: () => {
+                        showInfo('🏢 Redirecionando para seleção de filial...');
+
+                        // Limpar seleções atuais
+                        setBranch(null as any);
+                        setModule(null as any);
+
+                        // Aguardar um pouco para mostrar a mensagem
+                        setTimeout(() => {
+                            router.navigate('/(app)/branch-selection');
+                        }, 1000);
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleChangeModule = () => {
+        Alert.alert(
+            'Trocar de Módulo',
+            'Você será redirecionado para selecionar um novo módulo. Deseja continuar?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Continuar',
+                    onPress: () => {
+                        showInfo('🔧 Redirecionando para seleção de módulo...');
+
+                        // Limpar apenas o módulo
+                        setModule(null as any);
+
+                        // Aguardar um pouco para mostrar a mensagem
+                        setTimeout(() => {
+                            router.navigate('/(app)/module-selection');
+                        }, 1000);
                     },
                 },
             ]
@@ -84,11 +135,13 @@ export default function SettingsScreen() {
                 </View>
 
                 {rightElement || (
-                    <Ionicons
-                        name="chevron-forward"
-                        size={20}
-                        color={theme.colors.textSecondary}
-                    />
+                    onPress && (
+                        <Ionicons
+                            name="chevron-forward"
+                            size={20}
+                            color={theme.colors.textSecondary}
+                        />
+                    )
                 )}
             </View>
         </TouchableOpacity>
@@ -136,7 +189,7 @@ export default function SettingsScreen() {
                             title="Autenticação biométrica"
                             subtitle={biometricEnabled ? 'Ativada' : 'Desativada'}
                             onPress={() => {
-                                // Implementar configuração de biometria
+                                showWarning('⚠️ Configuração de biometria em desenvolvimento');
                             }}
                         />
 
@@ -145,7 +198,7 @@ export default function SettingsScreen() {
                             title="Alterar senha"
                             subtitle="Alterar senha de acesso"
                             onPress={() => {
-                                // Implementar alteração de senha
+                                showWarning('⚠️ Alteração de senha em desenvolvimento');
                             }}
                         />
                     </Card>
@@ -170,9 +223,91 @@ export default function SettingsScreen() {
                             title="Sincronização"
                             subtitle="Configurar sincronização automática"
                             onPress={() => {
-                                // Implementar configurações de sync
+                                showWarning('⚠️ Configurações de sincronização em desenvolvimento');
                             }}
                         />
+                    </Card>
+
+                    {/* 🆕 NOVA SEÇÃO: Filial e Módulo */}
+                    <Card variant="outlined" style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="business-outline" size={20} color={Colors.primary} />
+                            <Text style={[styles.sectionTitleWithIcon, { color: theme.colors.text }]}>
+                                Filial e Módulo
+                            </Text>
+                        </View>
+
+                        {/* Info Atual */}
+                        <View style={[styles.currentContext, { backgroundColor: `${Colors.primary}10` }]}>
+                            <View style={styles.contextRow}>
+                                <View style={styles.contextItem}>
+                                    <Ionicons name="location-outline" size={16} color={Colors.primary} />
+                                    <Text style={[styles.contextLabel, { color: theme.colors.textSecondary }]}>
+                                        Filial Atual:
+                                    </Text>
+                                </View>
+                                <Text style={[styles.contextValue, { color: theme.colors.text }]}>
+                                    {selectedBranch?.name || 'Nenhuma selecionada'}
+                                </Text>
+                            </View>
+
+                            {selectedBranch?.code && (
+                                <View style={styles.contextRow}>
+                                    <View style={styles.contextItem}>
+                                        <Ionicons name="barcode-outline" size={16} color={Colors.primary} />
+                                        <Text style={[styles.contextLabel, { color: theme.colors.textSecondary }]}>
+                                            Código:
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.contextValue, { color: theme.colors.text }]}>
+                                        {selectedBranch.code}
+                                    </Text>
+                                </View>
+                            )}
+
+                            <View style={styles.contextRow}>
+                                <View style={styles.contextItem}>
+                                    <Ionicons name="apps-outline" size={16} color={Colors.primary} />
+                                    <Text style={[styles.contextLabel, { color: theme.colors.textSecondary }]}>
+                                        Módulo Atual:
+                                    </Text>
+                                </View>
+                                <Text style={[styles.contextValue, { color: theme.colors.text }]}>
+                                    {selectedModule?.name || 'Nenhum selecionado'}
+                                </Text>
+                            </View>
+
+                            {selectedModule?.code && (
+                                <View style={styles.contextRow}>
+                                    <View style={styles.contextItem}>
+                                        <Ionicons name="code-outline" size={16} color={Colors.primary} />
+                                        <Text style={[styles.contextLabel, { color: theme.colors.textSecondary }]}>
+                                            Código:
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.contextValue, { color: theme.colors.text }]}>
+                                        {selectedModule.code}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Ações */}
+                        <SettingItem
+                            icon="business-outline"
+                            title="Trocar de filial"
+                            subtitle="Selecionar uma nova filial e módulo"
+                            onPress={handleChangeBranch}
+                        />
+
+                        {selectedBranch && (
+                            <SettingItem
+                                icon="apps-outline"
+                                title="Trocar apenas o módulo"
+                                subtitle="Manter a filial atual e escolher novo módulo"
+                                onPress={handleChangeModule}
+                            />
+                        )}
                     </Card>
 
                     {/* Sobre */}
@@ -192,7 +327,7 @@ export default function SettingsScreen() {
                             title="Ajuda e suporte"
                             subtitle="Central de ajuda e contato"
                             onPress={() => {
-                                // Implementar ajuda
+                                showWarning('⚠️ Central de ajuda em desenvolvimento');
                             }}
                         />
                     </Card>
@@ -246,10 +381,20 @@ const styles = StyleSheet.create({
         padding: 16,
         marginBottom: 16,
     },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         marginBottom: 16,
+    },
+    sectionTitleWithIcon: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginLeft: 8,
     },
     settingItem: {
         paddingVertical: 12,
@@ -283,6 +428,35 @@ const styles = StyleSheet.create({
     settingSubtitle: {
         fontSize: 14,
     },
+
+    // 🆕 Estilos para a nova seção de contexto
+    currentContext: {
+        padding: 16,
+        borderRadius: 8,
+        marginBottom: 16,
+    },
+    contextRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    contextItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    contextLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 6,
+    },
+    contextValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        maxWidth: '60%',
+        textAlign: 'right',
+    },
+
     footer: {
         paddingVertical: 24,
     },

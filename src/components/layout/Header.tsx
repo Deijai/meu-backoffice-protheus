@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
     const { theme, isDark } = useThemeStore();
     const insets = useSafeAreaInsets();
 
-    const headerBackgroundColor = backgroundColor || theme.colors.card;
+    const headerBackgroundColor = backgroundColor || theme.colors.background;
     const headerTitleColor = titleColor || theme.colors.text;
 
     const paddingTop = Platform.OS === 'ios' ? insets.top : StatusBar.currentHeight || 0;
@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {
                         backgroundColor: headerBackgroundColor,
                         paddingTop: paddingTop + 8,
-                        borderBottomColor: theme.colors.border,
+                        borderBottomColor: theme.colors.background,
                     },
                     variant === 'large' && styles.largeContainer,
                 ]}
