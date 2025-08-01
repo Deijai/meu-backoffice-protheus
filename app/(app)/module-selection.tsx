@@ -1,3 +1,5 @@
+// app/(app)/module-selection.tsx - VERSÃO LIMPA SEM COMPLICAÇÕES
+import { Header } from '@/src/components/layout/Header';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -7,16 +9,19 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { useAuthStore } from '../../src/store/authStore';
 import { useThemeStore } from '../../src/store/themeStore';
+import { useToastStore } from '../../src/store/toastStore';
 import { Colors } from '../../src/styles/colors';
 import type { Module } from '../../src/types/auth';
 import { MOCK_MODULES } from '../../src/utils/constants';
 
 const { width } = Dimensions.get('window');
-const itemWidth = (width - 72) / 2; // 24px padding + 24px gap
+const itemWidth = (width - 72) / 2;
 
 export default function ModuleSelectionScreen() {
     const { theme } = useThemeStore();
-    const { setModule, selectedBranch, user } = useAuthStore();
+    const { setModule, selectedBranch } = useAuthStore();
+    const { showSuccess, showError } = useToastStore();
+
     const [selectedModule, setSelectedModule] = useState<Module | null>(null);
 
     const handleSelectModule = (module: Module) => {
@@ -24,10 +29,17 @@ export default function ModuleSelectionScreen() {
     };
 
     const handleContinue = () => {
-        if (selectedModule) {
-            setModule(selectedModule);
-            router.replace('/(app)/(tabs)/home');
+        if (!selectedModule) {
+            showError('❌ Selecione um módulo para continuar');
+            return;
         }
+
+        setModule(selectedModule);
+        showSuccess(`✅ Módulo "${selectedModule.name}" selecionado!`);
+
+        setTimeout(() => {
+            router.replace('/(app)/(tabs)/home');
+        }, 1000);
     };
 
     const ModuleItem = ({ module }: { module: Module }) => (
@@ -82,27 +94,17 @@ export default function ModuleSelectionScreen() {
     return (
         <SafeArea>
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <View style={styles.header}>
-                    <View style={styles.headerTop}>
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                            style={styles.backButton}
-                        >
-                            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                        </TouchableOpacity>
-
+                <Header
+                    title="Selecionar Módulo"
+                    subtitle={`${selectedBranch?.name} - Escolha o módulo para começar.`}
+                    showBackButton={true}
+                    onBackPress={() => router.back()}
+                    rightElement={
                         <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
                             <Ionicons name="apps-outline" size={24} color="#ffffff" />
                         </View>
-                    </View>
-
-                    <Text style={[styles.title, { color: theme.colors.text }]}>
-                        Selecionar Módulo
-                    </Text>
-                    <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-                        {selectedBranch?.name} - Escolha o módulo para começar.
-                    </Text>
-                </View>
+                    }
+                />
 
                 <ScrollView style={styles.moduleList} showsVerticalScrollIndicator={false}>
                     <View style={styles.moduleGrid}>
@@ -113,6 +115,15 @@ export default function ModuleSelectionScreen() {
                 </ScrollView>
 
                 <View style={styles.footer}>
+                    {selectedModule && (
+                        <View style={[styles.selectionInfo, { backgroundColor: `${Colors.primary}15` }]}>
+                            <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
+                            <Text style={[styles.selectionText, { color: theme.colors.text }]}>
+                                {selectedModule.name} selecionado
+                            </Text>
+                        </View>
+                    )}
+
                     <Button
                         title="Continuar"
                         onPress={handleContinue}
@@ -207,8 +218,21 @@ const styles = StyleSheet.create({
     footer: {
         paddingHorizontal: 24,
         paddingVertical: 16,
+        gap: 12,
+    },
+    selectionInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        gap: 8,
+    },
+    selectionText: {
+        fontSize: 14,
+        fontWeight: '500',
     },
     continueButton: {
-        marginBottom: 8,
+        height: 56,
     },
 });

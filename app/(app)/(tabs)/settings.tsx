@@ -1,3 +1,4 @@
+// app/(app)/(tabs)/settings.tsx - CORREÇÃO SIMPLES DO ERRO DE NULL
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
@@ -37,6 +38,7 @@ export default function SettingsScreen() {
     };
 
     const handleChangeBranch = () => {
+        // Não limpar nada, apenas navegar
         Alert.alert(
             'Trocar de Filial',
             'Você será redirecionado para selecionar uma nova filial e módulo. Deseja continuar?',
@@ -46,12 +48,6 @@ export default function SettingsScreen() {
                     text: 'Continuar',
                     onPress: () => {
                         showInfo('🏢 Redirecionando para seleção de filial...');
-
-                        // Limpar seleções atuais
-                        setBranch(null as any);
-                        setModule(null as any);
-
-                        // Aguardar um pouco para mostrar a mensagem
                         setTimeout(() => {
                             router.navigate('/(app)/branch-selection');
                         }, 1000);
@@ -62,6 +58,7 @@ export default function SettingsScreen() {
     };
 
     const handleChangeModule = () => {
+        // Não limpar nada, apenas navegar
         Alert.alert(
             'Trocar de Módulo',
             'Você será redirecionado para selecionar um novo módulo. Deseja continuar?',
@@ -71,11 +68,6 @@ export default function SettingsScreen() {
                     text: 'Continuar',
                     onPress: () => {
                         showInfo('🔧 Redirecionando para seleção de módulo...');
-
-                        // Limpar apenas o módulo
-                        setModule(null as any);
-
-                        // Aguardar um pouco para mostrar a mensagem
                         setTimeout(() => {
                             router.navigate('/(app)/module-selection');
                         }, 1000);
@@ -228,7 +220,7 @@ export default function SettingsScreen() {
                         />
                     </Card>
 
-                    {/* 🆕 NOVA SEÇÃO: Filial e Módulo */}
+                    {/* Filial e Módulo - CORREÇÃO SIMPLES */}
                     <Card variant="outlined" style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="business-outline" size={20} color={Colors.primary} />
@@ -237,7 +229,7 @@ export default function SettingsScreen() {
                             </Text>
                         </View>
 
-                        {/* Info Atual */}
+                        {/* Info Atual - APENAS ADICIONANDO ? PARA EVITAR ERRO */}
                         <View style={[styles.currentContext, { backgroundColor: `${Colors.primary}10` }]}>
                             <View style={styles.contextRow}>
                                 <View style={styles.contextItem}>
@@ -428,8 +420,6 @@ const styles = StyleSheet.create({
     settingSubtitle: {
         fontSize: 14,
     },
-
-    // 🆕 Estilos para a nova seção de contexto
     currentContext: {
         padding: 16,
         borderRadius: 8,
@@ -456,7 +446,6 @@ const styles = StyleSheet.create({
         maxWidth: '60%',
         textAlign: 'right',
     },
-
     footer: {
         paddingVertical: 24,
     },

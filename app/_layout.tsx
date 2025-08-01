@@ -1,7 +1,9 @@
+// app/_layout.tsx - ATUALIZADO COM PERSISTÊNCIA
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { PersistenceProvider } from '../src/components/providers/PersistenceProvider';
 import { Toast } from '../src/components/ui/Toast';
 import { useToastStore } from '../src/store/toastStore';
 
@@ -11,7 +13,7 @@ function RootLayoutNav() {
     const { visible, message, type, hideToast } = useToastStore();
 
     return (
-        <>
+        <PersistenceProvider>
             <Stack
                 screenOptions={{
                     headerShown: false,
@@ -29,7 +31,7 @@ function RootLayoutNav() {
                 type={type}
                 onHide={hideToast}
             />
-        </>
+        </PersistenceProvider>
     );
 }
 

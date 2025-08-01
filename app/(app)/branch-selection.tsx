@@ -1,4 +1,4 @@
-// app/(app)/branch-selection.tsx - VERSÃO SIMPLIFICADA COM HOOK
+// app/(app)/branch-selection.tsx - VERSÃO LIMPA SEM COMPLICAÇÕES
 import { Header } from '@/src/components/layout/Header';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -26,9 +26,9 @@ import type { AppBranch } from '../../src/types/protheus';
 export default function BranchSelectionScreen() {
     const { theme } = useThemeStore();
     const { setBranch, user } = useAuthStore();
-    const { visible, message, type, hideToast, showSuccess, showError } = useToastStore();
+    const { showSuccess, showError } = useToastStore();
 
-    // Hook das filiais - faz tudo automaticamente!
+    // Hook das filiais
     const {
         filteredBranches,
         selectedBranch,
@@ -58,10 +58,8 @@ export default function BranchSelectionScreen() {
             return;
         }
 
-        console.log('➡️ Salvando filial selecionada:', selectedBranch.name);
-
         try {
-            // Salvar no store (que persiste automaticamente)
+            // Salvar no store
             setBranch({
                 id: selectedBranch.id,
                 code: selectedBranch.code,
@@ -72,7 +70,6 @@ export default function BranchSelectionScreen() {
 
             showSuccess(`✅ Filial "${selectedBranch.name}" selecionada!`);
 
-            // Aguardar um pouco para mostrar o sucesso
             setTimeout(() => {
                 router.replace('/(app)/module-selection');
             }, 1000);
@@ -84,7 +81,7 @@ export default function BranchSelectionScreen() {
     };
 
     /**
-     * Renderizar item da lista
+     * Renderizar item da lista - VERSÃO SIMPLES
      */
     const renderBranchItem = ({ item }: { item: AppBranch }) => (
         <TouchableOpacity
@@ -131,9 +128,6 @@ export default function BranchSelectionScreen() {
         </TouchableOpacity>
     );
 
-    /**
-     * Renderizar rodapé da lista (loading more)
-     */
     const renderFooter = () => {
         if (!isLoadingMore) return null;
         return (
@@ -143,9 +137,6 @@ export default function BranchSelectionScreen() {
         );
     };
 
-    /**
-     * Renderizar estado vazio
-     */
     const renderEmpty = () => (
         <View style={styles.emptyState}>
             <Ionicons
@@ -165,9 +156,6 @@ export default function BranchSelectionScreen() {
         </View>
     );
 
-    /**
-     * Renderizar estado de erro
-     */
     const renderError = () => (
         <View style={styles.errorState}>
             <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
@@ -189,33 +177,9 @@ export default function BranchSelectionScreen() {
         <SafeArea>
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 {/* Header */}
-                {/* <View style={styles.header}>
-                    <View style={styles.headerTop}>
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                            style={[styles.backButton, { backgroundColor: theme.colors.surface }]}
-                        >
-                            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-                        </TouchableOpacity>
-
-                        <View style={[styles.iconContainer, { backgroundColor: Colors.primary }]}>
-                            <Ionicons name="business-outline" size={24} color="#ffffff" />
-                        </View>
-                    </View>
-
-                    <Text style={[styles.title, { color: theme.colors.text }]}>
-                        Selecionar Filial
-                    </Text>
-                    <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-                        Olá, {user?.name || user?.username}! Escolha sua filial do Protheus.
-                    </Text>
-
-
-                </View> */}
-
                 <Header
-                    title=" Selecionar Filial"
-                    subtitle="Escolha sua filial"
+                    title="Selecionar Filial"
+                    subtitle={`Olá, ${user?.name || user?.username}! Escolha sua filial.`}
                     showBackButton={true}
                     onBackPress={() => router.back()}
                     rightElement={
@@ -269,7 +233,6 @@ export default function BranchSelectionScreen() {
 
                 {/* Footer */}
                 <View style={styles.footer}>
-                    {/* Info sobre seleção */}
                     {selectedBranch && (
                         <View style={[styles.selectionInfo, { backgroundColor: `${Colors.primary}15` }]}>
                             <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
@@ -287,7 +250,6 @@ export default function BranchSelectionScreen() {
                         leftIcon={<Ionicons name="arrow-forward" size={20} color="#ffffff" />}
                     />
 
-                    {/* Stats */}
                     {totalBranches > 0 && (
                         <Text style={[styles.statsText, { color: theme.colors.textSecondary }]}>
                             {filteredBranches.length} de {totalBranches} filiais
@@ -295,14 +257,6 @@ export default function BranchSelectionScreen() {
                         </Text>
                     )}
                 </View>
-
-                {/* Toast */}
-                {/* <Toast
-                    visible={visible}
-                    message={message}
-                    type={type}
-                    onHide={hideToast}
-                /> */}
             </View>
         </SafeArea>
     );
@@ -311,40 +265,6 @@ export default function BranchSelectionScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-    },
-    header: {
-        paddingHorizontal: 24,
-        paddingVertical: 16,
-    },
-    headerTop: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 16,
-    },
-    iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginBottom: 8,
-    },
-    subtitle: {
-        fontSize: 16,
-        lineHeight: 22,
     },
     searchContainer: {
         paddingHorizontal: 24,
@@ -458,5 +378,12 @@ const styles = StyleSheet.create({
     statsText: {
         fontSize: 12,
         textAlign: 'center',
+    },
+    iconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });
