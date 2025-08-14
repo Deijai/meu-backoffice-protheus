@@ -74,7 +74,7 @@ class HttpService {
             }
         );
 
-        // Response interceptor - trata respostas e erros com REFRESH TOKEN TOTVS
+        // Response interceptor - trata respostas e erros com REFRESH TOKEN AUTOMÁTICO
         this.axiosInstance.interceptors.response.use(
             (response: AxiosResponse) => {
                 console.log('✅ Response:', response.status, response.config.url);
@@ -95,11 +95,13 @@ class HttpService {
                         console.log('⏳ Refresh já em andamento, adicionando à fila...');
                         // Se já está refreshing, adiciona à fila
                         return new Promise((resolve, reject) => {
-                            this.failedQueue.push({ resolve, reject });
-                        }).then(() => {
-                            return this.axiosInstance(originalRequest);
-                        }).catch(err => {
-                            return Promise.reject(err);
+                            this.failedQueue.push({
+                                resolve: (token) => {
+                                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                                    resolve(this.axiosInstance(originalRequest));
+                                },
+                                reject
+                            });
                         });
                     }
 
@@ -107,7 +109,7 @@ class HttpService {
                     this.isRefreshing = true;
 
                     try {
-                        // Tenta refresh token se for OAUTH2
+                        // Verificar se é OAuth2 para tentar refresh token
                         if (authService.getAuthType() === AuthType.OAUTH2) {
                             console.log('🔄 Tentando refresh token TOTVS...');
 
@@ -123,7 +125,7 @@ class HttpService {
                             // Retry da requisição original
                             return this.axiosInstance(originalRequest);
                         } else {
-                            // Para BASIC, força logout
+                            // Para outros tipos de auth, força logout
                             console.log('❌ Não é OAuth2, forçando logout');
                             await authService.signOut();
                             this.processQueue(new Error('Session expired'), null);

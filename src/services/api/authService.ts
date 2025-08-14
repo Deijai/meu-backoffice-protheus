@@ -191,10 +191,34 @@ export class AuthService {
         }
     }
 
+    // ADICIONAR estes métodos no authService.ts para tratar refresh token expirado
+
     /**
-     * *** REFRESH TOKEN CORRIGIDO PARA TOTVS PROTHEUS ***
-     * Endpoint: /tlpp/oauth2/token
-     * Parâmetros: refresh_token e grant_type na query string
+     * Verificar se o refresh token pode estar expirado
+     */
+    async isRefreshTokenExpired(): Promise<boolean> {
+        const user = await this.getCurrentUser();
+        if (!user || !user.tokenExpiresAt) {
+            return true;
+        }
+
+        const expiresAt = new Date(user.tokenExpiresAt);
+        const now = new Date();
+        const hoursExpired = (now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60);
+
+        // Se o access token expirou há mais de 24 horas, provavelmente o refresh token também expirou
+        // (isso pode variar dependendo da configuração do servidor TOTVS)
+        if (hoursExpired > 24) {
+            console.log(`⚠️ Token expirado há ${Math.round(hoursExpired)} horas - Refresh token provavelmente expirado`);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * *** REFRESH TOKEN COM DETECÇÃO DE EXPIRAÇÃO ***
+     * Detecta se refresh token pode ter expirado baseado no tempo
      */
     async refreshToken(): Promise<AuthUser> {
         const currentUser = await this.getCurrentUser();
@@ -203,27 +227,52 @@ export class AuthService {
             throw new Error('❌ Nenhum refresh token disponível');
         }
 
+        // VERIFICAR SE REFRESH TOKEN PODE TER EXPIRADO
+        const isRefreshExpired = await this.isRefreshTokenExpired();
+        if (isRefreshExpired) {
+            console.log('⚠️ Refresh token provavelmente expirado - Limpando dados e forçando novo login');
+
+            // Limpar dados do usuário expirado
+            await this.clearExpiredUser(currentUser.username);
+
+            throw new Error('❌ Sessão expirada há muito tempo. Faça login novamente.');
+        }
+
         const { connection } = useConfigStore.getState();
 
-        // ENDPOINT CORRETO DO TOTVS PROTHEUS
-        const refreshUrl = `${connection.baseUrl}/tlpp/oauth2/token`;
+        if (!connection.baseUrl) {
+            throw new Error('❌ Configuração REST não encontrada');
+        }
+
+        // ENDPOINT OFICIAL CONFORME DOCUMENTAÇÃO TOTVS
+        const baseUrl = `${connection.baseUrl}/api/oauth2/v1/token`;
 
         console.log('🔄 === REFRESH TOKEN TOTVS PROTHEUS INICIADO ===');
-        console.log('🔗 URL:', refreshUrl);
+        console.log('🔗 Base URL:', baseUrl);
         console.log('🔑 Refresh Token:', currentUser.refresh_token.substring(0, 20) + '...');
 
+        // Verificar há quanto tempo o token expirou
+        if (currentUser.tokenExpiresAt) {
+            const expiresAt = new Date(currentUser.tokenExpiresAt);
+            const now = new Date();
+            const minutesExpired = (now.getTime() - expiresAt.getTime()) / (1000 * 60);
+            console.log(`⏰ Token expirado há ${Math.round(minutesExpired)} minutos`);
+        }
+
         try {
-            // ENVIAR PARÂMETROS NA QUERY STRING CONFORME DOCUMENTAÇÃO TOTVS
-            const response = await axios.post(refreshUrl, {}, {
+            console.log('📤 Enviando refresh token conforme documentação TOTVS...');
+
+            // SEGUIR EXATAMENTE A DOCUMENTAÇÃO OFICIAL:
+            // POST /api/oauth2/v1/token?grant_type=refresh_token&refresh_token=<token>
+            const response = await axios.post(baseUrl, {}, {
                 params: {
-                    refresh_token: currentUser.refresh_token,
-                    grant_type: 'refresh_token'
+                    grant_type: 'refresh_token',
+                    refresh_token: currentUser.refresh_token
                 },
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${currentUser.access_token}`,
                 },
-                timeout: 10000,
+                timeout: 15000,
                 validateStatus: (status) => {
                     console.log(`📡 Refresh Status: ${status}`);
                     return status < 500;
@@ -234,123 +283,326 @@ export class AuthService {
             console.log('📡 Status:', response.status);
             console.log('📄 Data:', JSON.stringify(response.data, null, 2));
 
-            // VERIFICAR SE REFRESH FOI BEM-SUCEDIDO
+            // VERIFICAR SE REFRESH FOI BEM-SUCEDIDO (conforme documentação TOTVS)
             if ((response.status === 200 || response.status === 201) && response.data?.access_token) {
                 console.log('✅ REFRESH TOKEN BEM-SUCEDIDO');
 
-                const oauthData: OAuth2Response = response.data;
+                const refreshResponse = response.data;
 
-                // Atualizar dados do usuário
+                console.log('📋 Resposta TOTVS recebida:', {
+                    access_token: refreshResponse.access_token ? 'Presente' : 'Ausente',
+                    refresh_token: refreshResponse.refresh_token ? 'Presente' : 'Ausente',
+                    token_type: refreshResponse.token_type,
+                    expires_in: refreshResponse.expires_in,
+                    scope: refreshResponse.scope
+                });
+
+                // Atualizar dados do usuário com nova resposta (conforme formato TOTVS)
                 const updatedUser: AuthUser = {
                     ...currentUser,
-                    access_token: oauthData.access_token,
-                    refresh_token: oauthData.refresh_token || currentUser.refresh_token, // Manter o antigo se não vier novo
-                    expires_in: oauthData.expires_in,
-                    tokenExpiresAt: new Date(Date.now() + (oauthData.expires_in * 1000)).toISOString(),
+                    access_token: refreshResponse.access_token,
+                    refresh_token: refreshResponse.refresh_token || currentUser.refresh_token, // Novo refresh_token ou manter o antigo
+                    token_type: refreshResponse.token_type || 'Bearer',
+                    expires_in: refreshResponse.expires_in,
+                    tokenExpiresAt: new Date(Date.now() + (refreshResponse.expires_in * 1000)).toISOString(),
                     lastLogin: new Date().toISOString(),
                 };
 
-                await this.saveAuthenticatedUser(updatedUser);
+                // Salvar usuário atualizado (mesmo método do login)
+                this.currentUser = updatedUser;
+                await asyncStorageService.setItem('current_user', updatedUser);
+
+                // Se era para manter conectado, atualizar também nos usuários salvos
+                if (updatedUser.keepConnected) {
+                    let savedUsers = await this.getSavedUsers();
+                    savedUsers = savedUsers.filter(u =>
+                        u.username.toLowerCase() !== updatedUser.username.toLowerCase()
+                    );
+                    savedUsers.push(updatedUser);
+                    await asyncStorageService.setItem('saved_users', savedUsers);
+                    console.log('💾 Usuário atualizado no auto login');
+                }
 
                 console.log('✅ Token renovado com sucesso');
-                console.log('🔑 Novo token:', updatedUser.access_token.substring(0, 20) + '...');
-                console.log('⏰ Expira em:', updatedUser.expires_in, 'segundos');
+                console.log('🔑 Novo access_token:', updatedUser.access_token.substring(0, 20) + '...');
+                console.log('🔄 Novo refresh_token:', updatedUser.refresh_token?.substring(0, 20) + '...');
+                console.log('⏰ Válido por:', updatedUser.expires_in, 'segundos');
+                console.log('📅 Expira em:', updatedUser.tokenExpiresAt);
 
                 return updatedUser;
 
+            } else if (response.status === 400 || response.status === 401) {
+                // REFRESH TOKEN EXPIRADO OU INVÁLIDO
+                console.error(`❌ Refresh token inválido/expirado (${response.status})`);
+
+                const errorData = response.data;
+                const isInvalidGrant = errorData?.message?.includes('invalid_grant') ||
+                    errorData?.code === 401;
+
+                if (isInvalidGrant) {
+                    console.log('🧹 Refresh token expirado - Limpando dados do usuário');
+
+                    // Limpar dados do usuário com refresh token expirado
+                    await this.clearExpiredUser(currentUser.username);
+
+                    throw new Error('❌ Sessão expirada. Faça login novamente.');
+                } else {
+                    const errorMsg = errorData?.message || errorData?.error || 'Erro no refresh token';
+                    throw new Error(`❌ ${errorMsg}`);
+                }
+
             } else {
                 console.error('❌ Refresh token falhou:', response.status, response.data);
-                throw new Error(`❌ Refresh token falhou: Status ${response.status}`);
+                throw new Error(`❌ Erro no refresh token: Status ${response.status}`);
             }
 
         } catch (error: any) {
             console.error('🚨 === ERRO NO REFRESH TOKEN ===');
-            console.error('🚨 Erro completo:', error);
+            console.error('Erro completo:', error);
 
             if (error.response) {
-                console.error('📡 Status:', error.response.status);
-                console.error('📄 Data:', error.response.data);
+                console.error('Status:', error.response.status);
+                console.error('Data:', error.response.data);
 
-                // VERIFICAR SE É "token expired" CONFORME DOCUMENTAÇÃO
-                const errorMessage = error.response.data?.error || error.response.data?.message || '';
+                // Tratar erros específicos baseados na documentação TOTVS
+                if (error.response.status === 400 || error.response.status === 401) {
+                    const errorData = error.response.data;
+                    const isInvalidGrant = errorData?.message?.includes('invalid_grant') ||
+                        errorData?.message?.includes('Falha de autenticação') ||
+                        errorData?.code === 401;
 
-                if (errorMessage.toLowerCase().includes('token expired') ||
-                    errorMessage.toLowerCase().includes('expired') ||
-                    error.response.status === 401) {
-                    console.log('🔓 Token realmente expirado, forçando novo login');
+                    if (isInvalidGrant) {
+                        console.log('🧹 Refresh token expirado (erro HTTP) - Limpando dados');
+
+                        // Limpar dados do usuário com refresh token expirado  
+                        await this.clearExpiredUser(currentUser.username);
+
+                        throw new Error('❌ Sessão expirada. Faça login novamente.');
+                    } else {
+                        const errorMsg = errorData?.message || errorData?.error || 'Erro de autenticação';
+                        throw new Error(`❌ ${errorMsg}`);
+                    }
+                } else {
+                    const errorMsg = error.response.data?.message ||
+                        error.response.data?.error ||
+                        `Erro no servidor: ${error.response.status}`;
+                    throw new Error(`❌ ${errorMsg}`);
                 }
+            } else if (error.request) {
+                throw new Error('❌ Erro de conexão - servidor não responde');
+            } else {
+                throw new Error(`❌ Erro inesperado: ${error.message}`);
             }
-
-            // Se refresh falhar, forçar novo login
-            await this.signOut();
-            throw new Error('❌ Sessão expirada, faça login novamente');
         }
     }
 
     /**
-     * VERIFICAR AUTO LOGIN
+     * Limpar dados de usuário com refresh token expirado
      */
-    async checkAutoLogin(): Promise<AuthUser | null> {
-        console.log('🔍 === VERIFICANDO AUTO LOGIN ===');
+    private async clearExpiredUser(username: string): Promise<void> {
+        console.log(`🧹 Limpando dados do usuário expirado: ${username}`);
 
-        const savedUsers = await this.getSavedUsers();
-        console.log('📋 Usuários salvos encontrados:', savedUsers.length);
+        try {
+            // Limpar usuário atual se for o mesmo
+            const currentUser = await this.getCurrentUser();
+            if (currentUser?.username.toLowerCase() === username.toLowerCase()) {
+                this.currentUser = null;
+                await asyncStorageService.removeItem('current_user');
+                console.log('🗑️ Usuário atual removido');
+            }
 
-        if (savedUsers.length === 0) {
-            console.log('ℹ️ Nenhum usuário salvo para auto login');
+            // Remover dos usuários salvos também
+            let savedUsers = await this.getSavedUsers();
+            const beforeCount = savedUsers.length;
+            savedUsers = savedUsers.filter(u =>
+                u.username.toLowerCase() !== username.toLowerCase()
+            );
+
+            if (savedUsers.length < beforeCount) {
+                await asyncStorageService.setItem('saved_users', savedUsers);
+                console.log('🗑️ Usuário removido dos salvos');
+            }
+
+            console.log('✅ Limpeza de usuário expirado concluída');
+
+        } catch (error) {
+            console.error('❌ Erro ao limpar usuário expirado:', error);
+        }
+    }
+
+    /**
+ * Verificar se token está próximo do vencimento (5 minutos antes)
+ */
+    async isTokenExpiringSoon(): Promise<boolean> {
+        const user = await this.getCurrentUser();
+        if (!user || !user.tokenExpiresAt) {
+            return true;
+        }
+
+        const expiresAt = new Date(user.tokenExpiresAt);
+        const now = new Date();
+        const fiveMinutesFromNow = new Date(now.getTime() + (5 * 60 * 1000));
+
+        return expiresAt <= fiveMinutesFromNow;
+    }
+
+
+
+    /**
+     * Renovar token automaticamente se necessário
+     */
+    async ensureValidToken(): Promise<AuthUser | null> {
+        const user = await this.getCurrentUser();
+        if (!user) {
             return null;
         }
 
-        // Ordenar por último login
-        const sortedUsers = savedUsers.sort((a, b) =>
-            new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime()
-        );
-
-        for (const user of sortedUsers) {
-            console.log('🔍 Verificando usuário:', user.username);
-            console.log('🔄 KeepConnected:', user.keepConnected);
-            console.log('🔑 Tem Token:', !!user.access_token);
-            console.log('🔒 Tem Senha:', !!user.password);
-
-            if (user.keepConnected && user.access_token && user.password) {
-                // Verificar se token ainda é válido
-                if (user.tokenExpiresAt) {
-                    const expiresAt = new Date(user.tokenExpiresAt);
-                    const now = new Date();
-                    const minutesUntilExpiry = (expiresAt.getTime() - now.getTime()) / (1000 * 60);
-
-                    console.log(`⏰ Token expira em ${minutesUntilExpiry.toFixed(1)} minutos`);
-
-                    if (expiresAt > now) {
-                        console.log('✅ Auto login disponível para:', user.username);
-                        return user;
-                    } else {
-                        console.log('⚠️ Token expirado para:', user.username);
-
-                        // Tentar refresh se tiver refresh_token
-                        if (user.refresh_token) {
-                            try {
-                                console.log('🔄 Tentando renovar token...');
-                                this.currentUser = user;
-                                const refreshedUser = await this.refreshToken();
-                                console.log('✅ Token renovado para auto login');
-                                return refreshedUser;
-                            } catch (error) {
-                                console.log('❌ Erro no refresh para auto login:', error);
-                            }
-                        }
-                    }
-                } else {
-                    console.log('⚠️ Token sem data de expiração');
-                    return user; // Retorna mesmo assim
-                }
-            } else {
-                console.log('❌ Usuário não habilitado para auto login');
+        const isExpiring = await this.isTokenExpiringSoon();
+        if (isExpiring && user.refresh_token) {
+            console.log('🔄 Token expirando em breve, renovando automaticamente...');
+            try {
+                return await this.refreshToken();
+            } catch (error) {
+                console.error('❌ Falha na renovação automática:', error);
+                // Se falhar, fazer logout
+                await this.signOut();
+                return null;
             }
         }
 
-        console.log('ℹ️ Nenhum auto login válido disponível');
-        return null;
+        return user;
+    }
+
+    // MELHORAR o método checkAutoLogin() no authService.ts para lidar com refresh token expirado
+
+    /**
+     * *** VERIFICAR AUTO LOGIN COM TRATAMENTO DE REFRESH EXPIRADO ***
+     * Detecta e limpa automaticamente usuários com refresh token expirado
+     */
+    async checkAutoLogin(): Promise<any> {
+        console.log('🔍 === VERIFICANDO AUTO LOGIN ===');
+
+        try {
+            const savedUsers = await this.getSavedUsers();
+            console.log(`📋 Usuários salvos encontrados: ${savedUsers.length}`);
+
+            if (savedUsers.length === 0) {
+                console.log('ℹ️ Nenhum usuário salvo para auto login');
+                return null;
+            }
+
+            // Verificar cada usuário salvo
+            for (const user of savedUsers) {
+                console.log(`🔍 Verificando usuário: ${user.username}`);
+                console.log(`🔄 KeepConnected: ${user.keepConnected}`);
+                console.log(`🔑 Tem Token: ${!!user.access_token}`);
+                console.log(`🔒 Tem Senha: ${!!user.password}`);
+
+                if (!user.keepConnected) {
+                    console.log(`⏭️ Usuário ${user.username} não tem keepConnected ativo`);
+                    continue;
+                }
+
+                if (!user.access_token) {
+                    console.log(`⏭️ Usuário ${user.username} não tem access_token`);
+                    continue;
+                }
+
+                // Verificar se token está expirado e há quanto tempo
+                if (user.tokenExpiresAt) {
+                    const expiresAt = new Date(user.tokenExpiresAt);
+                    const now = new Date();
+                    const minutesExpired = (now.getTime() - expiresAt.getTime()) / (1000 * 60);
+                    const hoursExpired = minutesExpired / 60;
+                    const daysExpired = hoursExpired / 24;
+
+                    console.log(`⏰ Token expira em ${Math.round(minutesExpired)} minutos`);
+
+                    // Se expirou há mais de 7 dias, considerar refresh token expirado
+                    if (daysExpired > 7) {
+                        console.log(`⚠️ Token expirado há ${Math.round(daysExpired)} dias - Removendo usuário automaticamente`);
+
+                        // Remover automaticamente usuário com refresh token muito antigo
+                        await this.clearExpiredUser(user.username);
+                        continue;
+                    }
+
+                    // Se expirou há menos de 24 horas e tem refresh token, tentar renovar
+                    if (minutesExpired > 0 && hoursExpired < 24 && user.refresh_token) {
+                        console.log(`🔄 Tentando renovar token para ${user.username}...`);
+
+                        try {
+                            // Definir como usuário atual temporariamente para o refresh
+                            this.currentUser = user;
+
+                            const refreshedUser = await this.refreshToken();
+                            console.log(`✅ Token renovado com sucesso para ${user.username}`);
+
+                            return refreshedUser;
+
+                        } catch (refreshError: any) {
+                            console.log(`❌ Erro no refresh para ${user.username}:`, refreshError.message);
+
+                            // Se erro indica refresh token expirado, remover usuário
+                            if (refreshError.message?.includes('Sessão expirada') ||
+                                refreshError.message?.includes('invalid_grant')) {
+                                console.log(`🧹 Removendo usuário ${user.username} com refresh expirado`);
+                                await this.clearExpiredUser(user.username);
+                            }
+
+                            continue;
+                        }
+                    }
+
+                    // Se expirou há mais de 24 horas, considerar refresh expirado
+                    if (hoursExpired > 24) {
+                        console.log(`⚠️ Token expirado há ${Math.round(hoursExpired)} horas - Refresh provavelmente expirado`);
+
+                        if (user.password) {
+                            console.log(`🔐 Usuário ${user.username} tem senha salva - Disponível para login manual`);
+                            return {
+                                username: user.username,
+                                password: user.password,
+                                keepConnected: true,
+                                needsManualLogin: true, // Flag para indicar que precisa de login manual
+                            };
+                        } else {
+                            console.log(`🧹 Removendo usuário ${user.username} sem senha e com token expirado`);
+                            await this.clearExpiredUser(user.username);
+                            continue;
+                        }
+                    }
+                }
+
+                // Se token ainda é válido
+                if (user.tokenExpiresAt) {
+                    const expiresAt = new Date(user.tokenExpiresAt);
+                    const now = new Date();
+                    if (expiresAt > now) {
+                        console.log(`✅ Token ainda válido para ${user.username}`);
+                        this.currentUser = user;
+                        return user;
+                    }
+                }
+
+                // Se tem senha salva, pode fazer auto login
+                if (user.password) {
+                    console.log(`🔐 Usuário ${user.username} disponível para auto login com senha`);
+                    return {
+                        username: user.username,
+                        password: user.password,
+                        keepConnected: true,
+                    };
+                }
+            }
+
+            console.log('ℹ️ Nenhum auto login válido disponível');
+            return null;
+
+        } catch (error: any) {
+            console.error('❌ Erro ao verificar auto login:', error);
+            return null;
+        }
     }
 
     /**

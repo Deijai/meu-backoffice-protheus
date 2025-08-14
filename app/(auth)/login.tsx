@@ -59,6 +59,8 @@ export default function LoginScreen() {
         }
     }, []);
 
+    // ATUALIZAR o método checkForAutoLogin() na LoginScreen para lidar com refresh token expirado
+
     const checkForAutoLogin = async () => {
         try {
             const autoUser = await authService.checkAutoLogin();
@@ -77,8 +79,18 @@ export default function LoginScreen() {
 
                 setShowAutoLoginOptions(true);
 
-                // Se tem senha salva, oferecer login automático
-                if (autoUser.keepConnected && autoUser.password) {
+                // *** VERIFICAR SE PRECISA DE LOGIN MANUAL ***
+                if (autoUser.needsManualLogin) {
+                    console.log('⚠️ Usuário precisa de login manual - refresh token expirado');
+                    showInfo('⚠️ Sua sessão expirou. Confirme sua senha para continuar.');
+
+                    // Não fazer auto login, apenas mostrar dados preenchidos
+                    return;
+                }
+
+                // Se tem senha salva e não precisa de login manual, tentar auto login
+                if (autoUser.keepConnected && autoUser.password && !autoUser.needsManualLogin) {
+                    console.log('🔄 Iniciando auto login automático...');
                     setTimeout(() => {
                         handleAutoLogin(autoUser);
                     }, 1000);
@@ -88,6 +100,84 @@ export default function LoginScreen() {
             console.error('Erro ao verificar auto login:', error);
         }
     };
+
+    // *** MELHORAR o método handleAutoLogin para tratar refresh expirado ***
+    const handleAutoLogin = async (user: any) => {
+        if (!user || !user.password) {
+            console.log('❌ Dados insuficientes para auto login');
+            showError('❌ Dados de login incompletos');
+            return;
+        }
+
+        console.log('🔄 === INICIANDO AUTO LOGIN ===');
+        setIsLoading(true);
+        showInfo('🔄 Fazendo login automático...');
+
+        try {
+            // Usar os dados salvos para fazer novo login
+            const authUser = await authService.signIn({
+                username: user.username,
+                password: user.password,
+                keepConnected: true,
+            });
+
+            const storeUser = {
+                id: authUser.username,
+                username: authUser.username,
+                name: authUser.username,
+                email: '',
+            };
+
+            login(storeUser);
+            showSuccess('✅ Login automático realizado!');
+            console.log('✅ Auto login bem-sucedido');
+
+            setTimeout(() => {
+                router.navigate('/(app)/branch-selection');
+            }, 1000);
+
+        } catch (error: any) {
+            console.error('❌ Erro no auto login:', error);
+
+            // Verificar se é erro de servidor REST
+            const isServerError = isServerRelatedError(error);
+
+            if (isServerError) {
+                console.log('🔧 Erro de servidor no auto login - Redirecionando para configuração REST');
+                showError('❌ Problema de conexão detectado. Redirecionando para configuração...');
+
+                setTimeout(() => {
+                    router.replace('/(auth)/setup?fromError=true');
+                }, 2000);
+
+                return;
+            }
+
+            // Tratar erro de credenciais ou refresh token expirado
+            let errorMessage = error.message || 'Erro no login automático';
+            if (!errorMessage.startsWith('❌')) {
+                errorMessage = `❌ ${errorMessage}`;
+            }
+
+            // Se erro indica sessão expirada, mostrar mensagem específica
+            if (errorMessage.includes('Sessão expirada') || errorMessage.includes('invalid_grant')) {
+                showError('⚠️ Sua sessão expirou. Por favor, confirme sua senha.');
+
+                // Manter dados preenchidos para login manual
+                setShowAutoLoginOptions(true);
+            } else {
+                showError(`${errorMessage}. Tente fazer login manualmente.`);
+
+                // Limpar dados se erro não for de sessão expirada
+                setShowAutoLoginOptions(false);
+                setAutoLoginUser(null);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
 
     /**
      * Detecta se o erro é relacionado ao servidor REST e requer reconfiguração
@@ -299,68 +389,6 @@ export default function LoginScreen() {
         }
     };
 
-    const handleAutoLogin = async (user: any) => {
-        if (!user || !user.password) {
-            console.log('❌ Dados insuficientes para auto login');
-            return;
-        }
-
-        console.log('🔄 === INICIANDO AUTO LOGIN ===');
-        setIsLoading(true);
-        showInfo('🔄 Fazendo login automático...');
-
-        try {
-            // Usar os dados salvos para login
-            const authUser = await authService.signIn({
-                username: user.username,
-                password: user.password,
-                keepConnected: true,
-            });
-
-            const storeUser = {
-                id: authUser.username,
-                username: authUser.username,
-                name: authUser.username,
-                email: '',
-            };
-
-            login(storeUser);
-            showSuccess('✅ Login automático realizado!');
-            console.log('✅ Auto login bem-sucedido');
-
-            setTimeout(() => {
-                router.navigate('/(app)/branch-selection');
-            }, 1000);
-
-        } catch (error: any) {
-            console.error('❌ Erro no auto login:', error);
-
-            // Verificar se é erro de servidor REST
-            const isServerError = isServerRelatedError(error);
-
-            if (isServerError) {
-                console.log('🔧 Erro de servidor no auto login - Redirecionando para configuração REST');
-                showError('❌ Problema de conexão detectado. Redirecionando para configuração...');
-
-                setTimeout(() => {
-                    router.replace('/(auth)/setup?fromError=true');
-                }, 2000);
-
-                return;
-            }
-
-            let errorMessage = error.message || 'Erro no login automático';
-            if (!errorMessage.startsWith('❌')) {
-                errorMessage = `❌ ${errorMessage}`;
-            }
-
-            showError(`${errorMessage}. Faça login manualmente.`);
-            setShowAutoLoginOptions(false);
-            setAutoLoginUser(null);
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const handleBiometricLogin = async () => {
         if (!biometricAvailable || !isEnrolled) {
