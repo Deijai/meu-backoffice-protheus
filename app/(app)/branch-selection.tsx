@@ -81,7 +81,7 @@ export default function BranchSelectionScreen() {
     };
 
     /**
-     * Renderizar item da lista - VERSÃO SIMPLES
+     * Renderizar item da lista - VERSÃO SIMPLIFICADA
      */
     const renderBranchItem = ({ item }: { item: AppBranch }) => (
         <TouchableOpacity
@@ -106,12 +106,14 @@ export default function BranchSelectionScreen() {
                         <Text style={[styles.branchName, { color: theme.colors.text }]}>
                             {item.name}
                         </Text>
-                        <Text style={[styles.branchLocation, { color: theme.colors.textSecondary }]}>
-                            📍 {item.location}
-                        </Text>
                         {item.description && (
                             <Text style={[styles.branchDescription, { color: theme.colors.textSecondary }]}>
                                 {item.description}
+                            </Text>
+                        )}
+                        {item.enterpriseGroup && (
+                            <Text style={[styles.branchGroup, { color: theme.colors.textSecondary }]}>
+                                {item.enterpriseGroup}
                             </Text>
                         )}
                     </View>
@@ -297,13 +299,13 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 4,
     },
-    branchLocation: {
+    branchDescription: {
         fontSize: 14,
         marginBottom: 2,
     },
-    branchDescription: {
+    branchGroup: {
         fontSize: 13,
-        fontStyle: 'italic',
+        fontWeight: '500',
     },
     branchIcon: {
         marginLeft: 16,
