@@ -33,36 +33,61 @@ const CardOption: React.FC<CardOptionProps> = ({
     const { theme } = useThemeStore();
     const icon = getDocumentTypeIcon(documentType);
 
+    // Estilos locais para o CardOption
+    const cardOptionStyles = StyleSheet.create({
+        container: {
+            borderRadius: 12,
+            borderWidth: 2,
+            overflow: 'hidden',
+            backgroundColor: theme.colors.surface,
+            borderColor: isEnabled ? theme.colors.primary : theme.colors.border,
+        },
+        content: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 16,
+        },
+        left: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            flex: 1,
+        },
+        textContainer: {
+            marginLeft: 16,
+            flex: 1,
+        },
+        title: {
+            fontSize: 16,
+            fontWeight: '600',
+            marginBottom: 2,
+            color: isEnabled ? theme.colors.text : theme.colors.textSecondary,
+        },
+        subtitle: {
+            fontSize: 12,
+            fontWeight: '500',
+            color: theme.colors.textSecondary,
+        },
+    });
+
     return (
         <TouchableOpacity
-            style={[
-                styles.cardOption,
-                {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: isEnabled ? theme.colors.primary : theme.colors.border,
-                }
-            ]}
+            style={cardOptionStyles.container}
             onPress={onToggle}
             activeOpacity={0.7}
         >
-            <View style={styles.cardOptionContent}>
-                <View style={styles.cardOptionLeft}>
+            <View style={cardOptionStyles.content}>
+                <View style={cardOptionStyles.left}>
                     <Ionicons
                         name={icon as any}
                         size={24}
                         color={isEnabled ? theme.colors.primary : theme.colors.textSecondary}
                     />
-                    <View style={styles.cardOptionText}>
-                        <Text style={[
-                            styles.cardOptionTitle,
-                            { color: isEnabled ? theme.colors.text : theme.colors.textSecondary }
-                        ]}>
+                    <View style={cardOptionStyles.textContainer}>
+                        <Text style={cardOptionStyles.title}>
                             {DOCUMENT_TYPES[documentType]}
                         </Text>
-                        <Text style={[
-                            styles.cardOptionSubtitle,
-                            { color: theme.colors.textSecondary }
-                        ]}>
+                        <Text style={cardOptionStyles.subtitle}>
                             {documentType}
                         </Text>
                     </View>
@@ -277,41 +302,6 @@ const createStyles = (theme: any) => StyleSheet.create({
     cardsContainer: {
         paddingHorizontal: 20,
         gap: 12,
-    },
-
-    cardOption: {
-        borderRadius: 12,
-        borderWidth: 2,
-        overflow: 'hidden',
-    },
-
-    cardOptionContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 16,
-    },
-
-    cardOptionLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-
-    cardOptionText: {
-        marginLeft: 16,
-        flex: 1,
-    },
-
-    cardOptionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 2,
-    },
-
-    cardOptionSubtitle: {
-        fontSize: 12,
-        fontWeight: '500',
     },
 
     infoSection: {

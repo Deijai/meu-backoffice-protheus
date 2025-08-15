@@ -2,7 +2,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
     Modal,
     ScrollView,
     StyleSheet,
@@ -38,26 +37,52 @@ const CheckboxItem: React.FC<CheckboxItemProps> = ({
 }) => {
     const { theme } = useThemeStore();
 
+    // Estilos locais para o CheckboxItem
+    const checkboxStyles = StyleSheet.create({
+        item: {
+            paddingVertical: 4,
+        },
+        content: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+        },
+        textContainer: {
+            flex: 1,
+            marginRight: 12,
+        },
+        title: {
+            fontSize: 16,
+            fontWeight: '500',
+            color: theme.colors.text,
+        },
+        subtitle: {
+            fontSize: 12,
+            marginTop: 2,
+            color: theme.colors.textSecondary,
+        },
+    });
+
     return (
         <TouchableOpacity
-            style={styles.checkboxItem}
+            style={checkboxStyles.item}
             onPress={onToggle}
             activeOpacity={0.7}
         >
-            <View style={styles.checkboxContent}>
-                <View style={styles.checkboxText}>
-                    <Text style={[styles.checkboxTitle, { color: theme.colors.text }]}>
+            <View style={checkboxStyles.content}>
+                <View style={checkboxStyles.textContainer}>
+                    <Text style={checkboxStyles.title}>
                         {title}
                     </Text>
                     {subtitle && (
-                        <Text style={[styles.checkboxSubtitle, { color: theme.colors.textSecondary }]}>
+                        <Text style={checkboxStyles.subtitle}>
                             {subtitle}
                         </Text>
                     )}
                 </View>
 
                 <Ionicons
-                    name={isChecked ? 'checkmark-square' : 'square-outline'}
+                    name={isChecked ? 'checkmark-square' : 'square-outline' as any}
                     size={24}
                     color={isChecked ? theme.colors.primary : theme.colors.textSecondary}
                 />
@@ -116,11 +141,11 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         setIsLoadingBranches(false);
     };
 
-    const toggleBranch = (branch: string) => {
+    const toggleBranch = (branchCode: string) => {
         setSelectedBranches(prev =>
-            prev.includes(branch)
-                ? prev.filter(b => b !== branch)
-                : [...prev, branch]
+            prev.includes(branchCode)
+                ? prev.filter(b => b !== branchCode)
+                : [...prev, branchCode]
         );
     };
 
@@ -133,10 +158,11 @@ export const FilterModal: React.FC<FilterModalProps> = ({
     };
 
     const selectAllBranches = () => {
+        const allBranchCodes = availableBranches.map(b => b.code);
         setSelectedBranches(
-            selectedBranches.length === availableBranches.length
+            selectedBranches.length === allBranchCodes.length
                 ? []
-                : availableBranches
+                : allBranchCodes
         );
     };
 
@@ -149,64 +175,16 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         );
     };
 
-    const validateDateFormat = (date: string): boolean => {
-        if (!date) return true;
-        const regex = /^\d{2}\/\d{2}\/\d{4}$/;
-        return regex.test(date);
-    };
-
-    const formatDateForApi = (dateString: string): string => {
-        if (!dateString) return '';
-        const [day, month, year] = dateString.split('/');
-        return `${year}${month}${day}`;
-    };
-
     const handleApplyFilters = () => {
-        // Validação de datas
-        if (!validateDateFormat(initDate)) {
-            Alert.alert('Erro', 'Data inicial deve estar no formato DD/MM/AAAA');
-            return;
-        }
+        const newFilters: FilterState = {
+            searchkey: searchText.trim() || undefined,
+            initDate: initDate || undefined,
+            endDate: endDate || undefined,
+            documentBranch: selectedBranches.length > 0 ? selectedBranches : undefined,
+            documentTypes: selectedTypes.length > 0 ? selectedTypes : undefined,
+        };
 
-        if (!validateDateFormat(endDate)) {
-            Alert.alert('Erro', 'Data final deve estar no formato DD/MM/AAAA');
-            return;
-        }
-
-        // Validação de período
-        if (initDate && endDate) {
-            const start = new Date(formatDateForApi(initDate));
-            const end = new Date(formatDateForApi(endDate));
-
-            if (start > end) {
-                Alert.alert('Erro', 'Data inicial não pode ser maior que a data final');
-                return;
-            }
-        }
-
-        const filters: FilterState = {};
-
-        if (searchText.trim()) {
-            filters.searchkey = searchText.trim();
-        }
-
-        if (initDate) {
-            filters.initDate = formatDateForApi(initDate);
-        }
-
-        if (endDate) {
-            filters.endDate = formatDateForApi(endDate);
-        }
-
-        if (selectedBranches.length > 0) {
-            filters.documentBranch = selectedBranches;
-        }
-
-        if (selectedTypes.length > 0) {
-            filters.documentTypes = selectedTypes;
-        }
-
-        onApplyFilters(filters);
+        onApplyFilters(newFilters);
         onClose();
     };
 
@@ -216,7 +194,6 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         setEndDate('');
         setSelectedBranches([]);
         setSelectedTypes([]);
-
         onApplyFilters({});
         onClose();
     };
@@ -272,20 +249,16 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                                 placeholderTextColor={theme.colors.textSecondary}
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                returnKeyType="search"
                             />
-                            {searchText.length > 0 && (
-                                <TouchableOpacity onPress={() => setSearchText('')}>
-                                    <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
-                                </TouchableOpacity>
-                            )}
                         </View>
+                        <Text style={styles.helpText}>
+                            Busca por número do documento, descrição ou observações
+                        </Text>
                     </View>
 
-                    {/* Filtro por Data */}
+                    {/* Filtro por data */}
                     <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Período</Text>
-
                         <View style={styles.dateRow}>
                             <View style={styles.dateInput}>
                                 <Text style={styles.dateLabel}>Data Inicial</Text>
@@ -302,8 +275,6 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                                         placeholderTextColor={theme.colors.textSecondary}
                                         value={initDate}
                                         onChangeText={setInitDate}
-                                        keyboardType="numeric"
-                                        maxLength={10}
                                     />
                                 </View>
                             </View>
@@ -323,25 +294,20 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                                         placeholderTextColor={theme.colors.textSecondary}
                                         value={endDate}
                                         onChangeText={setEndDate}
-                                        keyboardType="numeric"
-                                        maxLength={10}
                                     />
                                 </View>
                             </View>
                         </View>
-
-                        <Text style={styles.helpText}>
-                            Formato: DD/MM/AAAA (ex: 25/12/2024)
-                        </Text>
                     </View>
 
-                    {/* Filtro por Filial */}
+                    {/* Filtro por filial */}
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Filiais</Text>
                             <TouchableOpacity onPress={selectAllBranches}>
                                 <Text style={styles.selectAllText}>
-                                    {selectedBranches.length === availableBranches.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                                    {selectedBranches.length === availableBranches.length ?
+                                        'Desmarcar Todas' : 'Selecionar Todas'}
                                 </Text>
                             </TouchableOpacity>
                         </View>
@@ -352,12 +318,13 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                             </View>
                         ) : (
                             <View style={styles.checkboxContainer}>
-                                {availableBranches.map(branch => (
+                                {availableBranches.map((branch, index) => (
                                     <CheckboxItem
-                                        key={branch}
-                                        title={branch}
-                                        isChecked={selectedBranches.includes(branch)}
-                                        onToggle={() => toggleBranch(branch)}
+                                        key={branch.code + index}
+                                        title={branch.name}
+                                        subtitle={branch.code}
+                                        isChecked={selectedBranches.includes(branch.code)}
+                                        onToggle={() => toggleBranch(branch.code)}
                                     />
                                 ))}
                             </View>
@@ -370,7 +337,8 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                             <Text style={styles.sectionTitle}>Tipos de Documento</Text>
                             <TouchableOpacity onPress={selectAllTypes}>
                                 <Text style={styles.selectAllText}>
-                                    {selectedTypes.length === Object.keys(DOCUMENT_TYPES).length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                                    {selectedTypes.length === Object.keys(DOCUMENT_TYPES).length ?
+                                        'Desmarcar Todos' : 'Selecionar Todos'}
                                 </Text>
                             </TouchableOpacity>
                         </View>
@@ -420,7 +388,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
 
                             {selectedTypes.length > 0 && (
                                 <View style={styles.summaryItem}>
-                                    <Ionicons name="document-text" size={16} color={theme.colors.primary} />
+                                    <Ionicons name="document" size={16} color={theme.colors.primary} />
                                     <Text style={styles.summaryText}>
                                         {selectedTypes.length} tipo(s) de documento
                                     </Text>
@@ -578,31 +546,6 @@ const createStyles = (theme: any) => StyleSheet.create({
 
     checkboxContainer: {
         gap: 8,
-    },
-
-    checkboxItem: {
-        paddingVertical: 4,
-    },
-
-    checkboxContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-
-    checkboxText: {
-        flex: 1,
-        marginRight: 12,
-    },
-
-    checkboxTitle: {
-        fontSize: 16,
-        fontWeight: '500',
-    },
-
-    checkboxSubtitle: {
-        fontSize: 12,
-        marginTop: 2,
     },
 
     summarySection: {
