@@ -2,7 +2,7 @@ export const Colors = {
   primary: '#0c9abe',
   primaryDark: '#0a7a94',
   primaryLight: '#4db6d4',
-  
+
   // Light Theme
   light: {
     background: '#ffffff',
@@ -16,8 +16,9 @@ export const Colors = {
     success: '#38a169',
     warning: '#d69e2e',
     info: '#3182ce',
+    primary: '#0c9abe',
   },
-  
+
   // Dark Theme
   dark: {
     background: '#1a202c',
@@ -31,5 +32,6 @@ export const Colors = {
     success: '#68d391',
     warning: '#f6e05e',
     info: '#63b3ed',
+    primary: '#0c9abe',
   }
 };

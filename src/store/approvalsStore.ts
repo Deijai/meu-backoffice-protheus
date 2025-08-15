@@ -1,0 +1,307 @@
+// src/store/approvalsStore.ts
+import { create } from 'zustand';
+import { approvalsService } from '../services/api/approvalsService';
+import type {
+    Document,
+    DocumentStatus,
+    DocumentType,
+    FilterState,
+    SORT_OPTIONS,
+    SortOption
+} from '../types/approvals';
+
+interface ApprovalsState {
+    // Estado dos documentos
+    documents: Document[];
+    selectedDocuments: number[];
+    currentStatus: DocumentStatus;
+    currentPage: number;
+    hasNextPage: boolean;
+    isLoading: boolean;
+    isLoadingMore: boolean;
+    isRefreshing: boolean;
+    error: string | null;
+
+    // Filtros e ordenação
+    filters: FilterState;
+    sortOption: SortOption;
+
+    // Dashboard
+    dashboardSummary: Record<DocumentType, {
+        pending: number;
+        approved: number;
+        rejected: number;
+    }>;
+    isDashboardLoading: boolean;
+
+    // Ações de carregamento
+    loadDocuments: (status: DocumentStatus, reset?: boolean) => Promise<void>;
+    loadMoreDocuments: () => Promise<void>;
+    refreshDocuments: () => Promise<void>;
+    loadDashboardSummary: (documentTypes: DocumentType[]) => Promise<void>;
+
+    // Ações de seleção
+    selectDocument: (scrId: number) => void;
+    selectAllDocuments: () => void;
+    clearSelection: () => void;
+    isDocumentSelected: (scrId: number) => boolean;
+    getSelectedDocuments: () => Document[];
+
+    // Ações de aprovação
+    approveSelected: () => Promise<void>;
+    rejectSelected: (reason?: string) => Promise<void>;
+
+    // Filtros e ordenação
+    setFilters: (filters: Partial<FilterState>) => void;
+    clearFilters: () => void;
+    setSortOption: (option: SortOption) => void;
+    sortDocuments: (documents: Document[]) => Document[];
+
+    // Utilitários
+    setCurrentStatus: (status: DocumentStatus) => void;
+    clearError: () => void;
+}
+
+export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
+    // Estado inicial
+    documents: [],
+    selectedDocuments: [],
+    currentStatus: '02',
+    currentPage: 1,
+    hasNextPage: false,
+    isLoading: false,
+    isLoadingMore: false,
+    isRefreshing: false,
+    error: null,
+
+    filters: {},
+    sortOption: SORT_OPTIONS[2], // Mais recente por padrão
+
+    dashboardSummary: {},
+    isDashboardLoading: false,
+
+    // Carregamento de documentos
+    loadDocuments: async (status: DocumentStatus, reset = true) => {
+        const state = get();
+
+        if (reset) {
+            set({
+                isLoading: true,
+                documents: [],
+                currentPage: 1,
+                selectedDocuments: [],
+                error: null
+            });
+        }
+
+        try {
+            const params = {
+                page: reset ? 1 : state.currentPage,
+                documentStatus: status,
+                ...state.filters
+            };
+
+            const response = await approvalsService.getDocuments(params);
+            const sortedDocuments = state.sortDocuments(response.documents);
+
+            set({
+                documents: reset ? sortedDocuments : [...state.documents, ...sortedDocuments],
+                hasNextPage: response.hasNext,
+                currentStatus: status,
+                isLoading: false,
+                isLoadingMore: false,
+                error: null
+            });
+        } catch (error) {
+            set({
+                isLoading: false,
+                isLoadingMore: false,
+                error: error instanceof Error ? error.message : 'Erro ao carregar documentos'
+            });
+        }
+    },
+
+    loadMoreDocuments: async () => {
+        const state = get();
+
+        if (state.isLoadingMore || !state.hasNextPage) return;
+
+        set({ isLoadingMore: true, currentPage: state.currentPage + 1 });
+        await state.loadDocuments(state.currentStatus, false);
+    },
+
+    refreshDocuments: async () => {
+        const state = get();
+        set({ isRefreshing: true });
+        await state.loadDocuments(state.currentStatus, true);
+        set({ isRefreshing: false });
+    },
+
+    loadDashboardSummary: async (documentTypes: DocumentType[]) => {
+        set({ isDashboardLoading: true });
+
+        try {
+            const summary = await approvalsService.getDashboardSummary(documentTypes);
+            set({
+                dashboardSummary: summary,
+                isDashboardLoading: false
+            });
+        } catch (error) {
+            console.error('Erro ao carregar resumo do dashboard:', error);
+            set({ isDashboardLoading: false });
+        }
+    },
+
+    // Seleção de documentos
+    selectDocument: (scrId: number) => {
+        const state = get();
+        const document = state.documents.find(d => d.scrId === scrId);
+
+        if (!document) return;
+
+        // Verifica se pode selecionar (apenas do mesmo tipo)
+        const selectedDocs = state.getSelectedDocuments();
+        if (selectedDocs.length > 0 && selectedDocs[0].documentType !== document.documentType) {
+            return; // Não permite selecionar tipos diferentes
+        }
+
+        const isSelected = state.selectedDocuments.includes(scrId);
+
+        set({
+            selectedDocuments: isSelected
+                ? state.selectedDocuments.filter(id => id !== scrId)
+                : [...state.selectedDocuments, scrId]
+        });
+    },
+
+    selectAllDocuments: () => {
+        const state = get();
+        const selectableDocuments = state.documents
+            .filter(doc => doc.documentStatus === '02') // Apenas pendentes
+            .map(doc => doc.scrId);
+
+        set({ selectedDocuments: selectableDocuments });
+    },
+
+    clearSelection: () => {
+        set({ selectedDocuments: [] });
+    },
+
+    isDocumentSelected: (scrId: number) => {
+        return get().selectedDocuments.includes(scrId);
+    },
+
+    getSelectedDocuments: () => {
+        const state = get();
+        return state.documents.filter(doc =>
+            state.selectedDocuments.includes(doc.scrId)
+        );
+    },
+
+    // Aprovação/Reprovação
+    approveSelected: async () => {
+        const state = get();
+        const selectedIds = state.selectedDocuments;
+
+        if (selectedIds.length === 0) return;
+
+        try {
+            set({ isLoading: true });
+            await approvalsService.approveDocuments(selectedIds);
+
+            // Remove documentos aprovados da lista se estiver visualizando pendentes
+            if (state.currentStatus === '02') {
+                set({
+                    documents: state.documents.filter(doc => !selectedIds.includes(doc.scrId)),
+                    selectedDocuments: []
+                });
+            }
+
+            set({ isLoading: false });
+        } catch (error) {
+            set({
+                isLoading: false,
+                error: error instanceof Error ? error.message : 'Erro ao aprovar documentos'
+            });
+        }
+    },
+
+    rejectSelected: async (reason?: string) => {
+        const state = get();
+        const selectedIds = state.selectedDocuments;
+
+        if (selectedIds.length === 0) return;
+
+        try {
+            set({ isLoading: true });
+            await approvalsService.rejectDocuments(selectedIds, reason);
+
+            // Remove documentos reprovados da lista se estiver visualizando pendentes
+            if (state.currentStatus === '02') {
+                set({
+                    documents: state.documents.filter(doc => !selectedIds.includes(doc.scrId)),
+                    selectedDocuments: []
+                });
+            }
+
+            set({ isLoading: false });
+        } catch (error) {
+            set({
+                isLoading: false,
+                error: error instanceof Error ? error.message : 'Erro ao reprovar documentos'
+            });
+        }
+    },
+
+    // Filtros e ordenação
+    setFilters: (newFilters: Partial<FilterState>) => {
+        const state = get();
+        set({
+            filters: { ...state.filters, ...newFilters }
+        });
+        // Recarrega documentos com novos filtros
+        state.loadDocuments(state.currentStatus, true);
+    },
+
+    clearFilters: () => {
+        set({ filters: {} });
+        get().loadDocuments(get().currentStatus, true);
+    },
+
+    setSortOption: (option: SortOption) => {
+        const state = get();
+        set({ sortOption: option });
+
+        // Reordena documentos atuais
+        const sortedDocuments = state.sortDocuments(state.documents);
+        set({ documents: sortedDocuments });
+    },
+
+    sortDocuments: (documents: Document[]) => {
+        const { sortOption } = get();
+
+        return [...documents].sort((a, b) => {
+            const aValue = a[sortOption.field];
+            const bValue = b[sortOption.field];
+
+            let comparison = 0;
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                comparison = aValue.localeCompare(bValue);
+            } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+                comparison = aValue - bValue;
+            }
+
+            return sortOption.direction === 'desc' ? -comparison : comparison;
+        });
+    },
+
+    // Utilitários
+    setCurrentStatus: (status: DocumentStatus) => {
+        set({ currentStatus: status, selectedDocuments: [] });
+    },
+
+    clearError: () => {
+        set({ error: null });
+    }
+}));
