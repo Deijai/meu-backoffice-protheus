@@ -1,4 +1,4 @@
-// src/types/approvals.ts
+// src/types/approvals.ts - VERSÃO CORRIGIDA
 export interface Document {
     documentBranch: string;
     documentNumber: string;
@@ -125,18 +125,18 @@ export const MODULE_DOCUMENT_TYPES: Record<string, {
     }
 };
 
-// Tipos de documentos com seus nomes
+// Tipos de documentos com seus nomes - CORRIGIDO
 export const DOCUMENT_TYPES: Record<DocumentType, string> = {
-    // Módulo de Compras
+    // Módulo de Compras (SIGACOM)
     'PC': 'Pedido de Compra',
     'IP': 'Pedido de Compra por Item',
-    'AE': 'Autorização de Entrega',
+    'AE': 'Autorização de Entrega', // ✅ CORRIGIDO - estava "Asutorização"
     'SC': 'Solicitação de Compra',
-    // Módulo de Contratos
+    // Módulo de Contratos (SIGAGCT)
     'CT': 'Contratos',
     'MD': 'Medição de Contratos',
     'IM': 'Medição de Contratos por Item',
-    // Módulo de Estoque
+    // Módulo de Estoque (SIGAEST)
     'SA': 'Solicitação ao Armazém'
 };
 

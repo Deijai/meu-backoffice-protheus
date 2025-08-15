@@ -1,4 +1,4 @@
-// src/store/approvalsStore.ts
+// src/store/approvalsStore.ts - VERSÃO CORRIGIDA
 import { create } from 'zustand';
 import { approvalsService } from '../services/api/approvalsService';
 import type {
@@ -8,6 +8,8 @@ import type {
     FilterState,
     SortOption
 } from '../types/approvals';
+import { getDocumentTypesForModule } from '../types/approvals';
+import { useAuthStore } from './authStore';
 
 // Definir SORT_OPTIONS aqui no store
 const SORT_OPTIONS: SortOption[] = [
@@ -100,6 +102,8 @@ interface ApprovalsState {
     setCurrentStatus: (status: DocumentStatus) => void;
     clearError: () => void;
     getSortOptions: () => SortOption[];
+    getCurrentModuleCode: () => string | null;
+    getValidDocumentTypesForCurrentModule: () => DocumentType[];
 }
 
 export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
@@ -118,48 +122,27 @@ export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
     sortOption: SORT_OPTIONS[2], // Mais recente por padrão
 
     dashboardSummary: {
-        PC: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        IP: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        AE: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        SC: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        MD: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        IM: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        CT: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        },
-        SA: {
-            pending: 0,
-            approved: 0,
-            rejected: 0
-        }
+        PC: { pending: 0, approved: 0, rejected: 0 },
+        IP: { pending: 0, approved: 0, rejected: 0 },
+        AE: { pending: 0, approved: 0, rejected: 0 },
+        SC: { pending: 0, approved: 0, rejected: 0 },
+        MD: { pending: 0, approved: 0, rejected: 0 },
+        IM: { pending: 0, approved: 0, rejected: 0 },
+        CT: { pending: 0, approved: 0, rejected: 0 },
+        SA: { pending: 0, approved: 0, rejected: 0 }
     },
     isDashboardLoading: false,
+
+    // Utilitários para módulo
+    getCurrentModuleCode: () => {
+        const authStore = useAuthStore.getState();
+        return authStore.selectedModule?.code || null;
+    },
+
+    getValidDocumentTypesForCurrentModule: () => {
+        const moduleCode = get().getCurrentModuleCode();
+        return moduleCode ? getDocumentTypesForModule(moduleCode) : [];
+    },
 
     // Carregamento de documentos
     loadDocuments: async (status: DocumentStatus, reset = true) => {
@@ -176,18 +159,68 @@ export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
         }
 
         try {
-            const params = {
-                page: reset ? 1 : state.currentPage,
-                documentStatus: status,
-                ...state.filters
-            };
+            // Obter tipos de documentos válidos para o módulo atual
+            const validDocumentTypes = state.getValidDocumentTypesForCurrentModule();
 
-            const response = await approvalsService.getDocuments(params);
-            const sortedDocuments = state.sortDocuments(response.documents);
+            // Se não há módulo selecionado ou módulo não tem documentos de aprovação
+            if (validDocumentTypes.length === 0) {
+                set({
+                    documents: [],
+                    hasNextPage: false,
+                    isLoading: false,
+                    isLoadingMore: false,
+                    error: 'Selecione um módulo que tenha documentos de aprovação'
+                });
+                return;
+            }
+
+            // Fazer requisições para cada tipo de documento do módulo
+            // Isso é necessário porque a API atual aceita apenas um documenttype por vez
+            const allDocuments: Document[] = [];
+            let hasAnyNext = false;
+
+            for (const documentType of validDocumentTypes) {
+                try {
+                    const params = {
+                        page: reset ? 1 : state.currentPage,
+                        documentStatus: status,
+                        documenttype: documentType,
+                        // Aplicar outros filtros (exceto documentTypes que já está sendo tratado)
+                        ...(state.filters.searchkey && { searchkey: state.filters.searchkey }),
+                        ...(state.filters.initDate && { initDate: state.filters.initDate }),
+                        ...(state.filters.endDate && { endDate: state.filters.endDate }),
+                        ...(state.filters.documentBranch && state.filters.documentBranch.length > 0 && {
+                            documentBranch: state.filters.documentBranch.join(',')
+                        })
+                    };
+
+                    const response = await approvalsService.getDocuments(params);
+
+                    // Aplicar filtro adicional por tipos de documentos se especificado nos filtros
+                    let filteredDocuments = response.documents;
+                    if (state.filters.documentTypes && state.filters.documentTypes.length > 0) {
+                        filteredDocuments = response.documents.filter(doc =>
+                            state.filters.documentTypes!.includes(doc.documentType)
+                        );
+                    }
+
+                    allDocuments.push(...filteredDocuments);
+
+                    if (response.hasNext) {
+                        hasAnyNext = true;
+                    }
+                } catch (error) {
+                    console.warn(`Erro ao carregar documentos do tipo ${documentType}:`, error);
+                    // Continua carregando outros tipos mesmo se um falhar
+                }
+            }
+
+            // Ordenar documentos combinados
+            const sortedDocuments = state.sortDocuments(allDocuments);
 
             set({
                 documents: reset ? sortedDocuments : [...state.documents, ...sortedDocuments],
-                hasNextPage: response.hasNext,
+                hasNextPage: hasAnyNext,
                 currentStatus: status,
                 isLoading: false,
                 isLoadingMore: false,
@@ -337,9 +370,24 @@ export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
     // Filtros e ordenação
     setFilters: (newFilters: Partial<FilterState>) => {
         const state = get();
+        const validDocumentTypes = state.getValidDocumentTypesForCurrentModule();
+
+        // Filtra tipos de documentos para manter apenas os válidos para o módulo atual
+        let filteredDocumentTypes = newFilters.documentTypes;
+        if (filteredDocumentTypes) {
+            filteredDocumentTypes = filteredDocumentTypes.filter(type =>
+                validDocumentTypes.includes(type)
+            );
+        }
+
         set({
-            filters: { ...state.filters, ...newFilters }
+            filters: {
+                ...state.filters,
+                ...newFilters,
+                documentTypes: filteredDocumentTypes
+            }
         });
+
         // Recarrega documentos com novos filtros
         state.loadDocuments(state.currentStatus, true);
     },

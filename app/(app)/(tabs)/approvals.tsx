@@ -1,4 +1,4 @@
-// app/(app)/(tabs)/approvals.tsx
+// app/(app)/(tabs)/approvals.tsx - VERSÃO CORRIGIDA
 import { Ionicons } from '@expo/vector-icons';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,8 +19,10 @@ import { DocumentCard } from '../../../src/components/approvals/DocumentCard';
 import { FilterModal } from '../../../src/components/approvals/FilterModal';
 import { SafeArea } from '../../../src/components/layout/SafeArea';
 import { useApprovalsStore } from '../../../src/store/approvalsStore';
+import { useAuthStore } from '../../../src/store/authStore';
 import { useThemeStore } from '../../../src/store/themeStore';
 import type { Document, DocumentStatus, DocumentType } from '../../../src/types/approvals';
+import { getModuleInfo, hasDocumentsForApproval } from '../../../src/types/approvals';
 
 const SEGMENTS = ['Pendentes', 'Aprovados', 'Reprovados'];
 const STATUS_MAP: Record<number, DocumentStatus> = {
@@ -31,6 +33,7 @@ const STATUS_MAP: Record<number, DocumentStatus> = {
 
 export default function ApprovalsScreen() {
     const { theme } = useThemeStore();
+    const { selectedModule } = useAuthStore();
     const {
         documents,
         selectedDocuments,
@@ -57,7 +60,9 @@ export default function ApprovalsScreen() {
         isDocumentSelected,
         getSelectedDocuments,
         clearError,
-        getSortOptions
+        getSortOptions,
+        getCurrentModuleCode,
+        getValidDocumentTypesForCurrentModule
     } = useApprovalsStore();
 
     // Estados locais
@@ -75,6 +80,12 @@ export default function ApprovalsScreen() {
         initialTab?: string;
     }>();
 
+    // Informações do módulo atual
+    const moduleCode = getCurrentModuleCode();
+    const moduleInfo = moduleCode ? getModuleInfo(moduleCode) : null;
+    const hasValidModule = moduleCode ? hasDocumentsForApproval(moduleCode) : false;
+    const validDocumentTypes = getValidDocumentTypesForCurrentModule();
+
     // Efeito para navegação do dashboard
     useEffect(() => {
         if (params.initialTab) {
@@ -86,14 +97,19 @@ export default function ApprovalsScreen() {
         }
     }, [params.initialTab]);
 
-    // Carrega documentos quando status muda
+    // Carrega documentos quando status muda OU quando módulo muda
     useEffect(() => {
         const status = STATUS_MAP[selectedIndex];
         setCurrentStatus(status);
-        loadDocuments(status, true);
+
+        // Só carrega se há um módulo válido
+        if (hasValidModule) {
+            loadDocuments(status, true);
+        }
+
         setIsSelectionMode(false);
         clearSelection();
-    }, [selectedIndex]);
+    }, [selectedIndex, moduleCode, hasValidModule]);
 
     // Limpa erro quando aparecer
     useEffect(() => {
@@ -164,7 +180,7 @@ export default function ApprovalsScreen() {
                 sortOptions.map(option => ({
                     text: option.label,
                     onPress: () => setSortOption(option)
-                })) //.concat([{ text: 'Cancelar', style: 'cancel' }])
+                }))
             );
         }
     };
@@ -228,28 +244,87 @@ export default function ApprovalsScreen() {
             isSelected={isDocumentSelected(item.scrId)}
             onSelect={() => handleDocumentSelect(item)}
             onPress={() => handleDocumentPress(item)}
+            onLongPress={() => handleDocumentLongPress(item)}
             showSelection={isSelectionMode}
         />
     ), [isSelectionMode, isDocumentSelected]);
 
-    const renderEmptyList = () => (
-        <View style={styles.emptyContainer}>
-            <Ionicons
-                name="document-text-outline"
-                size={64}
-                color={theme.colors.textSecondary}
-            />
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-                Nenhum documento encontrado
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-                {filters && Object.keys(filters).length > 0
-                    ? 'Tente ajustar os filtros de busca'
-                    : 'Não há documentos para este status'
-                }
-            </Text>
-        </View>
-    );
+    const renderEmptyList = () => {
+        // Se não há módulo selecionado
+        if (!moduleCode) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Ionicons
+                        name="cube-outline"
+                        size={64}
+                        color={theme.colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                        Nenhum Módulo Selecionado
+                    </Text>
+                    <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+                        Selecione um módulo primeiro para visualizar documentos de aprovação
+                    </Text>
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
+                        onPress={() => router.push('/module-selection')}
+                    >
+                        <Text style={styles.actionButtonText}>Selecionar Módulo</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        // Se módulo não tem documentos de aprovação
+        if (!hasValidModule) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Ionicons
+                        name="information-circle-outline"
+                        size={64}
+                        color={theme.colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                        Módulo sem Documentos de Aprovação
+                    </Text>
+                    <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+                        O módulo {moduleInfo?.name} não possui documentos que necessitem de aprovação.
+                        {'\n\n'}
+                        Módulos com aprovações disponíveis:
+                        {'\n'}• Compras (SIGACOM)
+                        {'\n'}• Contratos (SIGAGCT)
+                        {'\n'}• Estoque (SIGAEST)
+                    </Text>
+                    <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
+                        onPress={() => router.push('/module-selection')}
+                    >
+                        <Text style={styles.actionButtonText}>Trocar Módulo</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        // Módulo válido mas sem documentos encontrados
+        return (
+            <View style={styles.emptyContainer}>
+                <Ionicons
+                    name="document-text-outline"
+                    size={64}
+                    color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                    Nenhum documento encontrado
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+                    {filters && Object.keys(filters).length > 0
+                        ? 'Tente ajustar os filtros de busca'
+                        : `Não há documentos ${SEGMENTS[selectedIndex].toLowerCase()} para este módulo`
+                    }
+                </Text>
+            </View>
+        );
+    };
 
     const renderLoadingFooter = () => {
         if (!isLoadingMore) return null;
@@ -271,31 +346,42 @@ export default function ApprovalsScreen() {
             <View style={styles.container}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.title}>Aprovações</Text>
+                    <View>
+                        <Text style={styles.title}>Aprovações</Text>
+                        {moduleInfo && (
+                            <Text style={[styles.moduleIndicator, { color: moduleInfo.color }]}>
+                                {moduleInfo.name}
+                            </Text>
+                        )}
+                    </View>
 
                     <View style={styles.headerActions}>
-                        {/* Botão de filtro */}
-                        <TouchableOpacity
-                            style={styles.headerButton}
-                            onPress={() => setIsFilterModalVisible(true)}
-                        >
-                            <Ionicons
-                                name="filter"
-                                size={20}
-                                color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
-                            />
-                        </TouchableOpacity>
+                        {/* Botão de filtro - apenas se há módulo válido */}
+                        {hasValidModule && (
+                            <TouchableOpacity
+                                style={styles.headerButton}
+                                onPress={() => setIsFilterModalVisible(true)}
+                            >
+                                <Ionicons
+                                    name="filter"
+                                    size={20}
+                                    color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
+                                />
+                            </TouchableOpacity>
+                        )}
 
-                        {/* Botão de ordenação */}
-                        <TouchableOpacity
-                            style={styles.headerButton}
-                            onPress={handleSortPress}
-                        >
-                            <Ionicons name="swap-vertical" size={20} color={theme.colors.text} />
-                        </TouchableOpacity>
+                        {/* Botão de ordenação - apenas se há módulo válido */}
+                        {hasValidModule && (
+                            <TouchableOpacity
+                                style={styles.headerButton}
+                                onPress={handleSortPress}
+                            >
+                                <Ionicons name="swap-vertical" size={20} color={theme.colors.text} />
+                            </TouchableOpacity>
+                        )}
 
-                        {/* Botão de seleção (apenas para pendentes) */}
-                        {currentStatus === '02' && (
+                        {/* Botão de seleção (apenas para pendentes e módulo válido) */}
+                        {hasValidModule && currentStatus === '02' && (
                             <TouchableOpacity
                                 style={styles.headerButton}
                                 onPress={toggleSelectionMode}
@@ -310,19 +396,21 @@ export default function ApprovalsScreen() {
                     </View>
                 </View>
 
-                {/* Segmented Control */}
-                <View style={styles.segmentContainer}>
-                    <SegmentedControl
-                        values={SEGMENTS}
-                        selectedIndex={selectedIndex}
-                        onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
-                        style={styles.segmentedControl}
-                        backgroundColor={theme.colors.surface}
-                        tintColor={theme.colors.primary}
-                        fontStyle={{ color: theme.colors.text }}
-                        activeFontStyle={{ color: '#FFFFFF' }}
-                    />
-                </View>
+                {/* Segmented Control - apenas se há módulo válido */}
+                {hasValidModule && (
+                    <View style={styles.segmentContainer}>
+                        <SegmentedControl
+                            values={SEGMENTS}
+                            selectedIndex={selectedIndex}
+                            onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
+                            style={styles.segmentedControl}
+                            backgroundColor={theme.colors.surface}
+                            tintColor={theme.colors.primary}
+                            fontStyle={{ color: theme.colors.text }}
+                            activeFontStyle={{ color: '#FFFFFF' }}
+                        />
+                    </View>
+                )}
 
                 {/* Modo de seleção header */}
                 {isSelectionMode && (
@@ -379,7 +467,7 @@ export default function ApprovalsScreen() {
                         />
                     }
                     onEndReached={() => {
-                        if (hasNextPage && !isLoadingMore) {
+                        if (hasNextPage && !isLoadingMore && hasValidModule) {
                             loadMoreDocuments();
                         }
                     }}
@@ -451,6 +539,13 @@ const createStyles = (theme: any) => StyleSheet.create({
         fontSize: 24,
         fontWeight: '700',
         color: theme.colors.text,
+    },
+
+    moduleIndicator: {
+        fontSize: 12,
+        fontWeight: '500',
+        marginTop: 2,
+        opacity: 0.8,
     },
 
     headerActions: {
@@ -550,6 +645,7 @@ const createStyles = (theme: any) => StyleSheet.create({
         fontSize: 14,
         textAlign: 'center',
         lineHeight: 20,
+        marginBottom: 24,
     },
 
     loadingFooter: {
