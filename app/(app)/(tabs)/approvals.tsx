@@ -1,5 +1,4 @@
-// app/(app)/(tabs)/approvals.tsx - Integração completa com navegação
-import DocumentCard from '@/src/components/approvals/DocumentCard';
+// app/(app)/(tabs)/approvals.tsx
 import { Ionicons } from '@expo/vector-icons';
 import SegmentedControl from '@react-native-segmented-control/segmented-control';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -14,16 +13,14 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    Vibration,
     View
 } from 'react-native';
+import { DocumentCard } from '../../../src/components/approvals/DocumentCard';
 import { FilterModal } from '../../../src/components/approvals/FilterModal';
 import { SafeArea } from '../../../src/components/layout/SafeArea';
 import { useApprovalsStore } from '../../../src/store/approvalsStore';
-import { useAuthStore } from '../../../src/store/authStore';
 import { useThemeStore } from '../../../src/store/themeStore';
 import type { Document, DocumentStatus, DocumentType } from '../../../src/types/approvals';
-import { getModuleInfo, hasDocumentsForApproval } from '../../../src/types/approvals';
 
 const SEGMENTS = ['Pendentes', 'Aprovados', 'Reprovados'];
 const STATUS_MAP: Record<number, DocumentStatus> = {
@@ -34,7 +31,6 @@ const STATUS_MAP: Record<number, DocumentStatus> = {
 
 export default function ApprovalsScreen() {
     const { theme } = useThemeStore();
-    const { selectedModule } = useAuthStore();
     const {
         documents,
         selectedDocuments,
@@ -61,9 +57,7 @@ export default function ApprovalsScreen() {
         isDocumentSelected,
         getSelectedDocuments,
         clearError,
-        getSortOptions,
-        getCurrentModuleCode,
-        getValidDocumentTypesForCurrentModule
+        getSortOptions
     } = useApprovalsStore();
 
     // Estados locais
@@ -81,123 +75,103 @@ export default function ApprovalsScreen() {
         initialTab?: string;
     }>();
 
-    // Informações do módulo atual
-    const moduleCode = getCurrentModuleCode();
-    const moduleInfo = moduleCode ? getModuleInfo(moduleCode) : null;
-    const hasValidModule = moduleCode ? hasDocumentsForApproval(moduleCode) : false;
-
-    // Efeitos
+    // Efeito para navegação do dashboard
     useEffect(() => {
-        // Configurar status inicial baseado nos parâmetros
-        if (params.status) {
-            const statusIndex = Object.values(STATUS_MAP).indexOf(params.status);
-            if (statusIndex !== -1) {
-                setSelectedIndex(statusIndex);
-                setCurrentStatus(params.status);
+        if (params.initialTab) {
+            const tabIndex = parseInt(params.initialTab);
+            if (tabIndex >= 0 && tabIndex <= 2) {
+                setSelectedIndex(tabIndex);
+                setCurrentStatus(STATUS_MAP[tabIndex]);
             }
         }
+    }, [params.initialTab]);
 
-        // Configurar filtros iniciais
-        if (params.documentType) {
-            setFilters({ documentTypes: [params.documentType] });
-        }
-    }, [params]);
-
+    // Carrega documentos quando status muda
     useEffect(() => {
-        // Carregar documentos quando o status ou módulo mudarem
-        if (hasValidModule) {
-            loadDocuments(currentStatus, true);
-        }
-    }, [currentStatus, selectedModule, hasValidModule]);
+        const status = STATUS_MAP[selectedIndex];
+        setCurrentStatus(status);
+        loadDocuments(status, true);
+        setIsSelectionMode(false);
+        clearSelection();
+    }, [selectedIndex]);
 
+    // Limpa erro quando aparecer
     useEffect(() => {
-        // Limpar seleção quando sair do modo de seleção
-        if (!isSelectionMode) {
-            clearSelection();
+        if (error) {
+            const timer = setTimeout(() => {
+                clearError();
+            }, 5000);
+            return () => clearTimeout(timer);
         }
-    }, [isSelectionMode]);
+    }, [error]);
 
-    // Handlers
     const handleSegmentChange = (index: number) => {
         setSelectedIndex(index);
-        const newStatus = STATUS_MAP[index];
-        setCurrentStatus(newStatus);
-        setIsSelectionMode(false); // Sair do modo de seleção ao trocar de aba
-
-        // Scroll para o topo
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    };
-
-    const handleDocumentSelect = (document: Document) => {
-        if (isSelectionMode) {
-            selectDocument(document.scrId);
-
-            // Vibração leve para feedback tátil
-            if (Platform.OS === 'ios') {
-                Vibration.vibrate(10);
-            }
-        } else {
-            // Navegar para detalhes do documento
-            try {
-                router.push(`/document/${document.scrId}`);
-            } catch (error) {
-                console.error('Erro ao navegar para detalhes:', error);
-                Alert.alert('Erro', 'Não foi possível abrir os detalhes do documento');
-            }
-        }
     };
 
     const handleDocumentPress = (document: Document) => {
-        // Ação adicional ao pressionar (opcional)
-        console.log('Documento pressionado:', document.documentNumber);
-
-        // Poderá implementar analytics, logging, etc.
+        if (isSelectionMode) {
+            selectDocument(document.scrId);
+        } else {
+            // Navega para detalhes do documento
+            router.push(`/document-details/${document.scrId}`);
+        }
     };
 
     const handleDocumentLongPress = (document: Document) => {
-        if (!isSelectionMode) {
-            // Entrar no modo de seleção
+        if (!isSelectionMode && currentStatus === '02') {
             setIsSelectionMode(true);
             selectDocument(document.scrId);
+        }
+    };
 
-            // Vibração mais forte para indicar entrada no modo de seleção
-            if (Platform.OS === 'ios') {
-                Vibration.vibrate([0, 50]);
-            } else {
-                Vibration.vibrate(50);
-            }
+    const handleDocumentSelect = (document: Document) => {
+        selectDocument(document.scrId);
+    };
 
-            // Feedback visual opcional
-            Alert.alert(
-                'Modo de Seleção',
-                'Toque nos documentos para selecioná-los ou use os botões de ação em lote.',
-                [{ text: 'OK' }],
-                { cancelable: true }
-            );
+    const toggleSelectionMode = () => {
+        setIsSelectionMode(!isSelectionMode);
+        if (isSelectionMode) {
+            clearSelection();
         }
     };
 
     const handleSelectAll = () => {
         selectAllDocuments();
-
-        // Vibração para feedback
-        if (Platform.OS === 'ios') {
-            Vibration.vibrate(10);
-        }
     };
 
-    const handleClearSelection = () => {
-        setIsSelectionMode(false);
-        clearSelection();
+    const handleSortPress = () => {
+        const sortOptions = getSortOptions();
+
+        if (Platform.OS === 'ios') {
+            ActionSheetIOS.showActionSheetWithOptions(
+                {
+                    options: ['Cancelar', ...sortOptions.map(opt => opt.label)],
+                    cancelButtonIndex: 0,
+                    title: 'Ordenar por'
+                },
+                (buttonIndex) => {
+                    if (buttonIndex > 0) {
+                        setSortOption(sortOptions[buttonIndex - 1]);
+                    }
+                }
+            );
+        } else {
+            // Para Android, pode usar um modal customizado ou Alert
+            Alert.alert(
+                'Ordenar por',
+                'Selecione uma opção',
+                sortOptions.map(option => ({
+                    text: option.label,
+                    onPress: () => setSortOption(option)
+                }))
+            );
+        }
     };
 
     const handleApproveSelected = async () => {
         const selectedDocs = getSelectedDocuments();
-
-        if (selectedDocs.length === 0) {
-            Alert.alert('Aviso', 'Selecione ao menos um documento para aprovar');
-            return;
-        }
+        if (selectedDocs.length === 0) return;
 
         Alert.alert(
             'Confirmar Aprovação',
@@ -211,13 +185,9 @@ export default function ApprovalsScreen() {
                         try {
                             await approveSelected();
                             setIsSelectionMode(false);
-
-                            Alert.alert(
-                                'Sucesso',
-                                `${selectedDocs.length} documento(s) aprovado(s) com sucesso!`
-                            );
+                            Alert.alert('Sucesso', 'Documentos aprovados com sucesso!');
                         } catch (error) {
-                            Alert.alert('Erro', 'Falha ao aprovar documentos selecionados');
+                            Alert.alert('Erro', 'Falha ao aprovar documentos');
                         }
                     }
                 }
@@ -227,16 +197,11 @@ export default function ApprovalsScreen() {
 
     const handleRejectSelected = async () => {
         const selectedDocs = getSelectedDocuments();
+        if (selectedDocs.length === 0) return;
 
-        if (selectedDocs.length === 0) {
-            Alert.alert('Aviso', 'Selecione ao menos um documento para reprovar');
-            return;
-        }
-
-        // Solicitar motivo da reprovação
         Alert.prompt(
-            'Reprovar Documentos',
-            `Digite o motivo para reprovar ${selectedDocs.length} documento(s):`,
+            'Confirmar Reprovação',
+            `Deseja reprovar ${selectedDocs.length} documento(s)?\nMotivo (opcional):`,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -244,502 +209,403 @@ export default function ApprovalsScreen() {
                     style: 'destructive',
                     onPress: async (reason) => {
                         try {
-                            await rejectSelected(reason || 'Reprovado via aplicativo móvel');
+                            await rejectSelected(reason);
                             setIsSelectionMode(false);
-
-                            Alert.alert(
-                                'Sucesso',
-                                `${selectedDocs.length} documento(s) reprovado(s) com sucesso!`
-                            );
+                            Alert.alert('Sucesso', 'Documentos reprovados com sucesso!');
                         } catch (error) {
-                            Alert.alert('Erro', 'Falha ao reprovar documentos selecionados');
+                            Alert.alert('Erro', 'Falha ao reprovar documentos');
                         }
                     }
                 }
             ],
-            'plain-text',
-            '',
-            'default'
+            'plain-text'
         );
     };
 
-    const handleSort = () => {
-        const sortOptions = getSortOptions();
-
-        if (Platform.OS === 'ios') {
-            ActionSheetIOS.showActionSheetWithOptions(
-                {
-                    options: ['Cancelar', ...sortOptions.map(option => option.label)],
-                    cancelButtonIndex: 0,
-                    title: 'Ordenar por'
-                },
-                (buttonIndex) => {
-                    if (buttonIndex > 0) {
-                        setSortOption(sortOptions[buttonIndex - 1]);
-                    }
-                }
-            );
-        } else {
-            // Para Android, você pode usar um modal customizado ou biblioteca como react-native-action-sheet
-            Alert.alert(
-                'Ordenar',
-                'Escolha como ordenar os documentos:',
-                sortOptions.map(option => ({
-                    text: option.label,
-                    onPress: () => setSortOption(option)
-                }))
-            );
-        }
-    };
-
-    // Renderização dos documentos
     const renderDocument = useCallback(({ item }: { item: Document }) => (
         <DocumentCard
             document={item}
             isSelected={isDocumentSelected(item.scrId)}
             onSelect={() => handleDocumentSelect(item)}
             onPress={() => handleDocumentPress(item)}
-            onLongPress={() => handleDocumentLongPress(item)}
             showSelection={isSelectionMode}
         />
     ), [isSelectionMode, isDocumentSelected]);
 
-    const renderEmptyList = () => {
-        // Se não há módulo selecionado
-        if (!moduleCode) {
-            return (
-                <View style={styles.emptyContainer}>
-                    <Ionicons
-                        name="cube-outline"
-                        size={64}
-                        color={theme.colors.textSecondary}
-                    />
-                    <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-                        Nenhum Módulo Selecionado
-                    </Text>
-                    <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-                        Selecione um módulo primeiro para visualizar documentos de aprovação
-                    </Text>
-                    <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
-                        onPress={() => router.push('/module-selection')}
-                    >
-                        <Text style={styles.actionButtonText}>Selecionar Módulo</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
+    const renderEmptyList = () => (
+        <View style={styles.emptyContainer}>
+            <Ionicons
+                name="document-text-outline"
+                size={64}
+                color={theme.colors.textSecondary}
+            />
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                Nenhum documento encontrado
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+                {filters && Object.keys(filters).length > 0
+                    ? 'Tente ajustar os filtros de busca'
+                    : 'Não há documentos para este status'
+                }
+            </Text>
+        </View>
+    );
 
-        // Se módulo não tem documentos de aprovação
-        if (!hasValidModule) {
-            return (
-                <View style={styles.emptyContainer}>
-                    <Ionicons
-                        name="information-circle-outline"
-                        size={64}
-                        color={theme.colors.textSecondary}
-                    />
-                    <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-                        Módulo sem Documentos de Aprovação
-                    </Text>
-                    <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-                        O módulo {moduleInfo?.name} não possui documentos que necessitem de aprovação.
-                        {'\n\n'}
-                        Módulos com aprovações disponíveis:
-                        {'\n'}• Compras (SIGACOM)
-                        {'\n'}• Contratos (SIGAGCT)
-                        {'\n'}• Estoque (SIGAEST)
-                    </Text>
-                    <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
-                        onPress={() => router.push('/module-selection')}
-                    >
-                        <Text style={styles.actionButtonText}>Trocar Módulo</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
+    const renderLoadingFooter = () => {
+        if (!isLoadingMore) return null;
 
-        // Módulo válido mas sem documentos encontrados
         return (
-            <View style={styles.emptyContainer}>
-                <Ionicons
-                    name="document-text-outline"
-                    size={64}
-                    color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-                    Nenhum documento encontrado
+            <View style={styles.loadingFooter}>
+                <ActivityIndicator color={theme.colors.primary} />
+                <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                    Carregando mais documentos...
                 </Text>
-                <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-                    {filters && Object.keys(filters).length > 0
-                        ? 'Tente ajustar os filtros para encontrar documentos'
-                        : 'Não há documentos para este status no momento'
-                    }
-                </Text>
-                {filters && Object.keys(filters).length > 0 && (
-                    <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
-                        onPress={clearFilters}
-                    >
-                        <Text style={styles.actionButtonText}>Limpar Filtros</Text>
-                    </TouchableOpacity>
-                )}
             </View>
         );
     };
 
-    // Se há erro, mostrar tela de erro
-    if (error) {
-        return (
-            <SafeArea>
-                <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                    <View style={styles.errorContainer}>
-                        <Ionicons name="alert-circle-outline" size={64} color={theme.colors.error} />
-                        <Text style={[styles.errorTitle, { color: theme.colors.error }]}>
-                            Erro ao Carregar
-                        </Text>
-                        <Text style={[styles.errorMessage, { color: theme.colors.textSecondary }]}>
-                            {error}
-                        </Text>
-                        <TouchableOpacity
-                            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
-                            onPress={() => {
-                                clearError();
-                                loadDocuments(currentStatus, true);
-                            }}
-                        >
-                            <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </SafeArea>
-        );
-    }
+    const styles = createStyles(theme);
 
     return (
-        <SafeArea>
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                {/* Header */}
-                <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-                    <View style={styles.headerLeft}>
-                        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-                            Aprovações
-                        </Text>
-                        {moduleInfo && (
-                            <Text style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}>
-                                {moduleInfo.name}
-                            </Text>
-                        )}
-                    </View>
+        <SafeArea style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+                <Text style={styles.title}>Aprovações</Text>
 
-                    <View style={styles.headerActions}>
+                <View style={styles.headerActions}>
+                    {/* Botão de filtro */}
+                    <TouchableOpacity
+                        style={styles.headerButton}
+                        onPress={() => setIsFilterModalVisible(true)}
+                    >
+                        <Ionicons
+                            name="filter"
+                            size={20}
+                            color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
+                        />
+                    </TouchableOpacity>
+
+                    {/* Botão de ordenação */}
+                    <TouchableOpacity
+                        style={styles.headerButton}
+                        onPress={handleSortPress}
+                    >
+                        <Ionicons name="swap-vertical" size={20} color={theme.colors.text} />
+                    </TouchableOpacity>
+
+                    {/* Botão de seleção (apenas para pendentes) */}
+                    {currentStatus === '02' && (
                         <TouchableOpacity
                             style={styles.headerButton}
-                            onPress={() => setIsFilterModalVisible(true)}
+                            onPress={toggleSelectionMode}
                         >
                             <Ionicons
-                                name="funnel-outline"
-                                size={24}
-                                color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.textSecondary}
+                                name={isSelectionMode ? "close" : "checkmark-circle-outline"}
+                                size={20}
+                                color={isSelectionMode ? theme.colors.error : theme.colors.text}
                             />
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.headerButton}
-                            onPress={handleSort}
-                        >
-                            <Ionicons name="swap-vertical-outline" size={24} color={theme.colors.textSecondary} />
-                        </TouchableOpacity>
-                    </View>
+                    )}
                 </View>
-
-                {/* Segment Control */}
-                {hasValidModule && (
-                    <View style={styles.segmentContainer}>
-                        <SegmentedControl
-                            values={SEGMENTS}
-                            selectedIndex={selectedIndex}
-                            onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
-                            style={styles.segmentControl}
-                            tintColor={theme.colors.primary}
-                            backgroundColor={theme.colors.surface}
-                        />
-                    </View>
-                )}
-
-                {/* Selection Mode Header */}
-                {isSelectionMode && (
-                    <View style={[styles.selectionHeader, { backgroundColor: theme.colors.primary }]}>
-                        <TouchableOpacity onPress={handleClearSelection} style={styles.selectionButton}>
-                            <Ionicons name="close" size={24} color="white" />
-                        </TouchableOpacity>
-
-                        <Text style={styles.selectionTitle}>
-                            {selectedDocuments.length} selecionado(s)
-                        </Text>
-
-                        <View style={styles.selectionActions}>
-                            <TouchableOpacity onPress={handleSelectAll} style={styles.selectionButton}>
-                                <Text style={styles.selectionButtonText}>Todos</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                )}
-
-                {/* Documents List */}
-                <FlatList
-                    ref={flatListRef}
-                    data={documents}
-                    renderItem={renderDocument}
-                    keyExtractor={(item) => item.scrId.toString()}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={[
-                        styles.documentsList,
-                        documents.length === 0 && styles.emptyListContainer
-                    ]}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={isRefreshing}
-                            onRefresh={refreshDocuments}
-                            colors={[theme.colors.primary]}
-                            tintColor={theme.colors.primary}
-                        />
-                    }
-                    onEndReached={() => {
-                        if (hasNextPage && !isLoadingMore) {
-                            loadMoreDocuments();
-                        }
-                    }}
-                    onEndReachedThreshold={0.3}
-                    ListFooterComponent={isLoadingMore ? (
-                        <View style={styles.loadingMore}>
-                            <ActivityIndicator size="large" color={theme.colors.primary} />
-                            <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-                                Carregando mais documentos...
-                            </Text>
-                        </View>
-                    ) : null}
-                    ListEmptyComponent={!isLoading ? renderEmptyList : null}
-                />
-
-                {/* Selection Actions */}
-                {isSelectionMode && selectedDocuments.length > 0 && (
-                    <View style={[styles.selectionActions, { backgroundColor: theme.colors.surface }]}>
-                        <TouchableOpacity
-                            style={[styles.actionButtonSecondary, { borderColor: theme.colors.error }]}
-                            onPress={handleRejectSelected}
-                        >
-                            <Ionicons name="close-circle-outline" size={20} color={theme.colors.error} />
-                            <Text style={[styles.actionButtonSecondaryText, { color: theme.colors.error }]}>
-                                Reprovar
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.actionButtonPrimary, { backgroundColor: theme.colors.success }]}
-                            onPress={handleApproveSelected}
-                        >
-                            <Ionicons name="checkmark-circle-outline" size={20} color="white" />
-                            <Text style={styles.actionButtonPrimaryText}>Aprovar</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                {/* Filter Modal */}
-                <FilterModal
-                    visible={isFilterModalVisible}
-                    onClose={() => setIsFilterModalVisible(false)}
-                    currentFilters={filters}
-                    onApplyFilters={setFilters}
-                />
-
-                {/* Loading Overlay */}
-                {isLoading && (
-                    <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color={theme.colors.primary} />
-                        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-                            Carregando documentos...
-                        </Text>
-                    </View>
-                )}
             </View>
+
+            {/* Segmented Control */}
+            <View style={styles.segmentContainer}>
+                <SegmentedControl
+                    values={SEGMENTS}
+                    selectedIndex={selectedIndex}
+                    onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
+                    style={styles.segmentedControl}
+                    backgroundColor={theme.colors.surface}
+                    tintColor={theme.colors.primary}
+                    fontStyle={{ color: theme.colors.text }}
+                    activeFontStyle={{ color: '#FFFFFF' }}
+                />
+            </View>
+
+            {/* Modo de seleção header */}
+            {isSelectionMode && (
+                <View style={styles.selectionHeader}>
+                    <Text style={[styles.selectionText, { color: theme.colors.text }]}>
+                        {selectedDocuments.length} selecionado(s)
+                    </Text>
+                    <TouchableOpacity onPress={handleSelectAll}>
+                        <Text style={[styles.selectAllText, { color: theme.colors.primary }]}>
+                            Selecionar Todos
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Filtros ativos */}
+            {Object.keys(filters).length > 0 && (
+                <View style={styles.activeFilters}>
+                    <Text style={[styles.filtersText, { color: theme.colors.textSecondary }]}>
+                        Filtros ativos
+                    </Text>
+                    <TouchableOpacity onPress={clearFilters}>
+                        <Text style={[styles.clearFiltersText, { color: theme.colors.primary }]}>
+                            Limpar
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Error message */}
+            {error && (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity onPress={clearError}>
+                        <Ionicons name="close" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Lista de documentos */}
+            <FlatList
+                ref={flatListRef}
+                data={documents}
+                keyExtractor={(item) => `${item.scrId}-${item.documentNumber}`}
+                renderItem={renderDocument}
+                ListEmptyComponent={!isLoading ? renderEmptyList : null}
+                ListFooterComponent={renderLoadingFooter}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={refreshDocuments}
+                        tintColor={theme.colors.primary}
+                        colors={[theme.colors.primary]}
+                    />
+                }
+                onEndReached={() => {
+                    if (hasNextPage && !isLoadingMore) {
+                        loadMoreDocuments();
+                    }
+                }}
+                onEndReachedThreshold={0.1}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={documents.length === 0 ? styles.emptyListContainer : undefined}
+            />
+
+            {/* Loading overlay */}
+            {isLoading && (
+                <View style={styles.loadingOverlay}>
+                    <ActivityIndicator size="large" color={theme.colors.primary} />
+                    <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                        Carregando documentos...
+                    </Text>
+                </View>
+            )}
+
+            {/* Ações de aprovação (modo de seleção) */}
+            {isSelectionMode && selectedDocuments.length > 0 && (
+                <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.rejectButton]}
+                        onPress={handleRejectSelected}
+                    >
+                        <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+                        <Text style={styles.actionButtonText}>Reprovar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.approveButton]}
+                        onPress={handleApproveSelected}
+                    >
+                        <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                        <Text style={styles.actionButtonText}>Aprovar</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Modal de filtros */}
+            <FilterModal
+                visible={isFilterModalVisible}
+                onClose={() => setIsFilterModalVisible(false)}
+                currentFilters={filters}
+                onApplyFilters={setFilters}
+            />
         </SafeArea>
     );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: any) => StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: theme.colors.background,
     },
+
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+        borderBottomColor: theme.colors.border,
     },
-    headerLeft: {
-        flex: 1,
-    },
-    headerTitle: {
+
+    title: {
         fontSize: 24,
         fontWeight: '700',
+        color: theme.colors.text,
     },
-    headerSubtitle: {
-        fontSize: 14,
-        marginTop: 2,
-    },
+
     headerActions: {
         flexDirection: 'row',
         gap: 8,
     },
+
     headerButton: {
         padding: 8,
+        borderRadius: 8,
     },
+
     segmentContainer: {
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
     },
-    segmentControl: {
+
+    segmentedControl: {
         height: 36,
     },
+
     selectionHeader: {
         flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        backgroundColor: theme.colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border,
+    },
+
+    selectionText: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+
+    selectAllText: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+
+    activeFilters: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        backgroundColor: theme.colors.surface,
+    },
+
+    filtersText: {
+        fontSize: 14,
+    },
+
+    clearFiltersText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+
+    errorContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: theme.colors.error,
+        paddingHorizontal: 20,
         paddingVertical: 12,
     },
-    selectionButton: {
-        padding: 4,
-    },
-    selectionTitle: {
+
+    errorText: {
         flex: 1,
-        textAlign: 'center',
-        fontSize: 16,
-        fontWeight: '600',
-        color: 'white',
-    },
-    selectionButtonText: {
-        color: 'white',
+        color: '#FFFFFF',
         fontSize: 14,
-        fontWeight: '600',
+        fontWeight: '500',
     },
-    documentsList: {
-        padding: 16,
-    },
+
     emptyListContainer: {
         flexGrow: 1,
     },
+
     emptyContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 32,
+        paddingHorizontal: 40,
     },
+
     emptyTitle: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: '600',
         marginTop: 16,
+        marginBottom: 8,
         textAlign: 'center',
     },
+
     emptySubtitle: {
         fontSize: 14,
         textAlign: 'center',
-        marginTop: 8,
         lineHeight: 20,
     },
-    actionButton: {
-        marginTop: 24,
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 8,
-    },
-    actionButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    selectionActions: {
+
+    loadingFooter: {
         flexDirection: 'row',
-        padding: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 20,
         gap: 12,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(0, 0, 0, 0.1)',
     },
-    actionButtonSecondary: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderRadius: 8,
-        gap: 8,
-    },
-    actionButtonPrimary: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        borderRadius: 8,
-        gap: 8,
-    },
-    actionButtonSecondaryText: {
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    actionButtonPrimaryText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: '600',
-    },
+
     loadingOverlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backgroundColor: 'rgba(0,0,0,0.3)',
         justifyContent: 'center',
         alignItems: 'center',
+        gap: 12,
     },
-    loadingMore: {
-        padding: 16,
-        alignItems: 'center',
-    },
+
     loadingText: {
-        marginTop: 8,
         fontSize: 14,
+        fontWeight: '500',
     },
-    errorContainer: {
+
+    actionButtons: {
+        flexDirection: 'row',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        paddingBottom: 32,
+        gap: 12,
+        backgroundColor: theme.colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.border,
+    },
+
+    actionButton: {
         flex: 1,
+        flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 32,
+        paddingVertical: 14,
+        borderRadius: 12,
+        gap: 8,
     },
-    errorTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        marginTop: 16,
+
+    approveButton: {
+        backgroundColor: '#28a745',
     },
-    errorMessage: {
-        fontSize: 14,
-        textAlign: 'center',
-        marginTop: 8,
-        lineHeight: 20,
+
+    rejectButton: {
+        backgroundColor: '#dc3545',
     },
-    retryButton: {
-        marginTop: 24,
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 8,
-    },
-    retryButtonText: {
-        color: 'white',
+
+    actionButtonText: {
+        color: '#FFFFFF',
         fontSize: 16,
         fontWeight: '600',
     },
