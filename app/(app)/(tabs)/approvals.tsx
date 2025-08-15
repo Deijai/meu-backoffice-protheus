@@ -164,7 +164,7 @@ export default function ApprovalsScreen() {
                 sortOptions.map(option => ({
                     text: option.label,
                     onPress: () => setSortOption(option)
-                })).concat([{ text: 'Cancelar', style: 'cancel' }])
+                })) //.concat([{ text: 'Cancelar', style: 'cancel' }])
             );
         }
     };

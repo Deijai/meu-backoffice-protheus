@@ -9,7 +9,7 @@ export default function TabLayout() {
     const { theme } = useThemeStore();
     const { selectedModule } = useAuthStore();
 
-    // Configurar tabs baseado no módulo selecionado
+    // Por enquanto, vamos trabalhar apenas com o módulo de Compras
     const getTabsForModule = () => {
         const commonTabs = [
             {
@@ -38,33 +38,21 @@ export default function TabLayout() {
             },
         ];
 
-        // Adicionar tabs específicos baseado no módulo
-        if (selectedModule?.code === 'SIGAFAT') {
+        // Adicionar tab de aprovações apenas para o módulo de Compras
+        if (selectedModule?.code === 'SIGACOM') {
             return [
-                ...commonTabs.slice(0, 2),
+                commonTabs[0], // home
                 {
-                    name: 'sales',
-                    title: 'Vendas',
-                    icon: 'card-outline',
-                    iconFocused: 'card',
+                    name: 'approvals',
+                    title: 'Aprovações',
+                    icon: 'checkmark-circle-outline',
+                    iconFocused: 'checkmark-circle',
                 },
-                ...commonTabs.slice(2),
+                ...commonTabs.slice(1), // reports, settings, profile
             ];
         }
 
-        if (selectedModule?.code === 'SIGAEST') {
-            return [
-                ...commonTabs.slice(0, 2),
-                {
-                    name: 'inventory',
-                    title: 'Estoque',
-                    icon: 'cube-outline',
-                    iconFocused: 'cube',
-                },
-                ...commonTabs.slice(2),
-            ];
-        }
-
+        // Para outros módulos, mostrar apenas tabs comuns por enquanto
         return commonTabs;
     };
 
@@ -77,15 +65,19 @@ export default function TabLayout() {
                 tabBarActiveTintColor: Colors.primary,
                 tabBarInactiveTintColor: theme.colors.textSecondary,
                 tabBarStyle: {
-                    backgroundColor: theme.colors.card,
+                    backgroundColor: theme.colors.surface,
                     borderTopColor: theme.colors.border,
                     paddingBottom: 8,
                     paddingTop: 8,
-                    height: 64,
+                    height: 70,
                 },
                 tabBarLabelStyle: {
                     fontSize: 12,
                     fontWeight: '500',
+                    marginTop: 4,
+                },
+                tabBarIconStyle: {
+                    marginBottom: 4,
                 },
             }}
         >
@@ -97,7 +89,7 @@ export default function TabLayout() {
                         title: tab.title,
                         tabBarIcon: ({ focused, color }) => (
                             <Ionicons
-                                name={(focused ? tab.iconFocused : tab.icon) as any}
+                                name={focused ? tab.iconFocused as any : tab.icon as any}
                                 size={24}
                                 color={color}
                             />
