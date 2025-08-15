@@ -119,159 +119,161 @@ export default function HomeScreen() {
     const styles = createStyles(theme);
 
     return (
-        <SafeArea style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.greeting}>Olá, administrador</Text>
-                    <Text style={styles.subtitle}>Módulo de Compras</Text>
+        <SafeArea>
+            <View style={styles.container}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.greeting}>Olá, administrador</Text>
+                        <Text style={styles.subtitle}>Módulo de Compras</Text>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.configIconButton}
+                        onPress={() => setIsConfigModalVisible(true)}
+                    >
+                        <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
+                    </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                    style={styles.configIconButton}
-                    onPress={() => setIsConfigModalVisible(true)}
+                {/* Resumo geral */}
+                {enabledCards.length > 0 && !isDashboardLoading && (
+                    <View style={styles.summaryContainer}>
+                        <View style={styles.summaryCard}>
+                            <View style={styles.summaryItem}>
+                                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>
+                                    Pendentes
+                                </Text>
+                                <Text style={[styles.summaryValue, { color: '#0c9abe' }]}>
+                                    {getTotalPendingCount()}
+                                </Text>
+                            </View>
+
+                            <View style={styles.summaryDivider} />
+
+                            <View style={styles.summaryItem}>
+                                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>
+                                    Total de Documentos
+                                </Text>
+                                <Text style={[styles.summaryValue, { color: theme.colors.text }]}>
+                                    {getTotalDocumentsCount()}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
+
+                {/* Conteúdo principal */}
+                <ScrollView
+                    style={styles.content}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isRefreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={theme.colors.primary}
+                            colors={[theme.colors.primary]}
+                        />
+                    }
+                    showsVerticalScrollIndicator={false}
                 >
-                    <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
+                    {/* Seção de documentos */}
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Documentos de Aprovação</Text>
+                            <TouchableOpacity
+                                onPress={() => setIsConfigModalVisible(true)}
+                                style={styles.configTextButton}
+                            >
+                                <Text style={[styles.configText, { color: theme.colors.primary }]}>
+                                    Configurar
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {renderDashboardCards()}
+                    </View>
+
+                    {/* Ações rápidas */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+
+                        <View style={styles.quickActions}>
+                            <TouchableOpacity style={styles.quickActionItem}>
+                                <View style={[styles.quickActionIcon, { backgroundColor: '#0c9abe20' }]}>
+                                    <Ionicons name="document-text" size={24} color="#0c9abe" />
+                                </View>
+                                <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
+                                    Todos os Pendentes
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.quickActionItem}>
+                                <View style={[styles.quickActionIcon, { backgroundColor: '#28a74520' }]}>
+                                    <Ionicons name="checkmark-circle" size={24} color="#28a745" />
+                                </View>
+                                <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
+                                    Aprovados Hoje
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.quickActionItem}>
+                                <View style={[styles.quickActionIcon, { backgroundColor: '#dc354520' }]}>
+                                    <Ionicons name="close-circle" size={24} color="#dc3545" />
+                                </View>
+                                <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
+                                    Reprovados
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.quickActionItem}>
+                                <View style={[styles.quickActionIcon, { backgroundColor: '#6c757d20' }]}>
+                                    <Ionicons name="analytics" size={24} color="#6c757d" />
+                                </View>
+                                <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
+                                    Relatórios
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Informações adicionais */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Dicas</Text>
+
+                        <View style={styles.tipsContainer}>
+                            <View style={styles.tipItem}>
+                                <Ionicons name="bulb-outline" size={20} color={theme.colors.primary} />
+                                <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
+                                    Use os filtros para encontrar documentos específicos mais rapidamente
+                                </Text>
+                            </View>
+
+                            <View style={styles.tipItem}>
+                                <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.primary} />
+                                <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
+                                    Selecione múltiplos documentos do mesmo tipo para aprovação em lote
+                                </Text>
+                            </View>
+
+                            <View style={styles.tipItem}>
+                                <Ionicons name="settings-outline" size={20} color={theme.colors.primary} />
+                                <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
+                                    Personalize seu dashboard ocultando cards que não utiliza
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Espaço adicional no final */}
+                    <View style={styles.bottomSpace} />
+                </ScrollView>
+
+                {/* Modal de configuração */}
+                <ConfigModal
+                    visible={isConfigModalVisible}
+                    onClose={() => setIsConfigModalVisible(false)}
+                />
             </View>
-
-            {/* Resumo geral */}
-            {enabledCards.length > 0 && !isDashboardLoading && (
-                <View style={styles.summaryContainer}>
-                    <View style={styles.summaryCard}>
-                        <View style={styles.summaryItem}>
-                            <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>
-                                Pendentes
-                            </Text>
-                            <Text style={[styles.summaryValue, { color: '#0c9abe' }]}>
-                                {getTotalPendingCount()}
-                            </Text>
-                        </View>
-
-                        <View style={styles.summaryDivider} />
-
-                        <View style={styles.summaryItem}>
-                            <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>
-                                Total de Documentos
-                            </Text>
-                            <Text style={[styles.summaryValue, { color: theme.colors.text }]}>
-                                {getTotalDocumentsCount()}
-                            </Text>
-                        </View>
-                    </View>
-                </View>
-            )}
-
-            {/* Conteúdo principal */}
-            <ScrollView
-                style={styles.content}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isRefreshing}
-                        onRefresh={handleRefresh}
-                        tintColor={theme.colors.primary}
-                        colors={[theme.colors.primary]}
-                    />
-                }
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Seção de documentos */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Documentos de Aprovação</Text>
-                        <TouchableOpacity
-                            onPress={() => setIsConfigModalVisible(true)}
-                            style={styles.configTextButton}
-                        >
-                            <Text style={[styles.configText, { color: theme.colors.primary }]}>
-                                Configurar
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {renderDashboardCards()}
-                </View>
-
-                {/* Ações rápidas */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Ações Rápidas</Text>
-
-                    <View style={styles.quickActions}>
-                        <TouchableOpacity style={styles.quickActionItem}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#0c9abe20' }]}>
-                                <Ionicons name="document-text" size={24} color="#0c9abe" />
-                            </View>
-                            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
-                                Todos os Pendentes
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.quickActionItem}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#28a74520' }]}>
-                                <Ionicons name="checkmark-circle" size={24} color="#28a745" />
-                            </View>
-                            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
-                                Aprovados Hoje
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.quickActionItem}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#dc354520' }]}>
-                                <Ionicons name="close-circle" size={24} color="#dc3545" />
-                            </View>
-                            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
-                                Reprovados
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.quickActionItem}>
-                            <View style={[styles.quickActionIcon, { backgroundColor: '#6c757d20' }]}>
-                                <Ionicons name="analytics" size={24} color="#6c757d" />
-                            </View>
-                            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>
-                                Relatórios
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* Informações adicionais */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Dicas</Text>
-
-                    <View style={styles.tipsContainer}>
-                        <View style={styles.tipItem}>
-                            <Ionicons name="bulb-outline" size={20} color={theme.colors.primary} />
-                            <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-                                Use os filtros para encontrar documentos específicos mais rapidamente
-                            </Text>
-                        </View>
-
-                        <View style={styles.tipItem}>
-                            <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.primary} />
-                            <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-                                Selecione múltiplos documentos do mesmo tipo para aprovação em lote
-                            </Text>
-                        </View>
-
-                        <View style={styles.tipItem}>
-                            <Ionicons name="settings-outline" size={20} color={theme.colors.primary} />
-                            <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-                                Personalize seu dashboard ocultando cards que não utiliza
-                            </Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Espaço adicional no final */}
-                <View style={styles.bottomSpace} />
-            </ScrollView>
-
-            {/* Modal de configuração */}
-            <ConfigModal
-                visible={isConfigModalVisible}
-                onClose={() => setIsConfigModalVisible(false)}
-            />
         </SafeArea>
     );
 }

@@ -21,7 +21,6 @@ import { SafeArea } from '../../../src/components/layout/SafeArea';
 import { useApprovalsStore } from '../../../src/store/approvalsStore';
 import { useThemeStore } from '../../../src/store/themeStore';
 import type { Document, DocumentStatus, DocumentType } from '../../../src/types/approvals';
-import { SORT_OPTIONS } from '../../../src/types/approvals';
 
 const SEGMENTS = ['Pendentes', 'Aprovados', 'Reprovados'];
 const STATUS_MAP: Record<number, DocumentStatus> = {
@@ -57,7 +56,8 @@ export default function ApprovalsScreen() {
         setCurrentStatus,
         isDocumentSelected,
         getSelectedDocuments,
-        clearError
+        clearError,
+        getSortOptions
     } = useApprovalsStore();
 
     // Estados locais
@@ -141,16 +141,18 @@ export default function ApprovalsScreen() {
     };
 
     const handleSortPress = () => {
+        const sortOptions = getSortOptions();
+
         if (Platform.OS === 'ios') {
             ActionSheetIOS.showActionSheetWithOptions(
                 {
-                    options: ['Cancelar', ...SORT_OPTIONS.map(opt => opt.label)],
+                    options: ['Cancelar', ...sortOptions.map(opt => opt.label)],
                     cancelButtonIndex: 0,
                     title: 'Ordenar por'
                 },
                 (buttonIndex) => {
                     if (buttonIndex > 0) {
-                        setSortOption(SORT_OPTIONS[buttonIndex - 1]);
+                        setSortOption(sortOptions[buttonIndex - 1]);
                     }
                 }
             );
@@ -159,7 +161,7 @@ export default function ApprovalsScreen() {
             Alert.alert(
                 'Ordenar por',
                 'Selecione uma opção',
-                SORT_OPTIONS.map(option => ({
+                sortOptions.map(option => ({
                     text: option.label,
                     onPress: () => setSortOption(option)
                 })).concat([{ text: 'Cancelar', style: 'cancel' }])
@@ -265,164 +267,166 @@ export default function ApprovalsScreen() {
     const styles = createStyles(theme);
 
     return (
-        <SafeArea style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.title}>Aprovações</Text>
+        <SafeArea>
+            <View style={styles.container}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Text style={styles.title}>Aprovações</Text>
 
-                <View style={styles.headerActions}>
-                    {/* Botão de filtro */}
-                    <TouchableOpacity
-                        style={styles.headerButton}
-                        onPress={() => setIsFilterModalVisible(true)}
-                    >
-                        <Ionicons
-                            name="filter"
-                            size={20}
-                            color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
-                        />
-                    </TouchableOpacity>
-
-                    {/* Botão de ordenação */}
-                    <TouchableOpacity
-                        style={styles.headerButton}
-                        onPress={handleSortPress}
-                    >
-                        <Ionicons name="swap-vertical" size={20} color={theme.colors.text} />
-                    </TouchableOpacity>
-
-                    {/* Botão de seleção (apenas para pendentes) */}
-                    {currentStatus === '02' && (
+                    <View style={styles.headerActions}>
+                        {/* Botão de filtro */}
                         <TouchableOpacity
                             style={styles.headerButton}
-                            onPress={toggleSelectionMode}
+                            onPress={() => setIsFilterModalVisible(true)}
                         >
                             <Ionicons
-                                name={isSelectionMode ? "close" : "checkmark-circle-outline"}
+                                name="filter"
                                 size={20}
-                                color={isSelectionMode ? theme.colors.error : theme.colors.text}
+                                color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
                             />
                         </TouchableOpacity>
-                    )}
-                </View>
-            </View>
 
-            {/* Segmented Control */}
-            <View style={styles.segmentContainer}>
-                <SegmentedControl
-                    values={SEGMENTS}
-                    selectedIndex={selectedIndex}
-                    onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
-                    style={styles.segmentedControl}
-                    backgroundColor={theme.colors.surface}
-                    tintColor={theme.colors.primary}
-                    fontStyle={{ color: theme.colors.text }}
-                    activeFontStyle={{ color: '#FFFFFF' }}
+                        {/* Botão de ordenação */}
+                        <TouchableOpacity
+                            style={styles.headerButton}
+                            onPress={handleSortPress}
+                        >
+                            <Ionicons name="swap-vertical" size={20} color={theme.colors.text} />
+                        </TouchableOpacity>
+
+                        {/* Botão de seleção (apenas para pendentes) */}
+                        {currentStatus === '02' && (
+                            <TouchableOpacity
+                                style={styles.headerButton}
+                                onPress={toggleSelectionMode}
+                            >
+                                <Ionicons
+                                    name={isSelectionMode ? "close" : "checkmark-circle-outline"}
+                                    size={20}
+                                    color={isSelectionMode ? theme.colors.error : theme.colors.text}
+                                />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+
+                {/* Segmented Control */}
+                <View style={styles.segmentContainer}>
+                    <SegmentedControl
+                        values={SEGMENTS}
+                        selectedIndex={selectedIndex}
+                        onChange={(event) => handleSegmentChange(event.nativeEvent.selectedSegmentIndex)}
+                        style={styles.segmentedControl}
+                        backgroundColor={theme.colors.surface}
+                        tintColor={theme.colors.primary}
+                        fontStyle={{ color: theme.colors.text }}
+                        activeFontStyle={{ color: '#FFFFFF' }}
+                    />
+                </View>
+
+                {/* Modo de seleção header */}
+                {isSelectionMode && (
+                    <View style={styles.selectionHeader}>
+                        <Text style={[styles.selectionText, { color: theme.colors.text }]}>
+                            {selectedDocuments.length} selecionado(s)
+                        </Text>
+                        <TouchableOpacity onPress={handleSelectAll}>
+                            <Text style={[styles.selectAllText, { color: theme.colors.primary }]}>
+                                Selecionar Todos
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Filtros ativos */}
+                {Object.keys(filters).length > 0 && (
+                    <View style={styles.activeFilters}>
+                        <Text style={[styles.filtersText, { color: theme.colors.textSecondary }]}>
+                            Filtros ativos
+                        </Text>
+                        <TouchableOpacity onPress={clearFilters}>
+                            <Text style={[styles.clearFiltersText, { color: theme.colors.primary }]}>
+                                Limpar
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Error message */}
+                {error && (
+                    <View style={styles.errorContainer}>
+                        <Text style={styles.errorText}>{error}</Text>
+                        <TouchableOpacity onPress={clearError}>
+                            <Ionicons name="close" size={20} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Lista de documentos */}
+                <FlatList
+                    ref={flatListRef}
+                    data={documents}
+                    keyExtractor={(item) => `${item.scrId}-${item.documentNumber}`}
+                    renderItem={renderDocument}
+                    ListEmptyComponent={!isLoading ? renderEmptyList : null}
+                    ListFooterComponent={renderLoadingFooter}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isRefreshing}
+                            onRefresh={refreshDocuments}
+                            tintColor={theme.colors.primary}
+                            colors={[theme.colors.primary]}
+                        />
+                    }
+                    onEndReached={() => {
+                        if (hasNextPage && !isLoadingMore) {
+                            loadMoreDocuments();
+                        }
+                    }}
+                    onEndReachedThreshold={0.1}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={documents.length === 0 ? styles.emptyListContainer : undefined}
+                />
+
+                {/* Loading overlay */}
+                {isLoading && (
+                    <View style={styles.loadingOverlay}>
+                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                            Carregando documentos...
+                        </Text>
+                    </View>
+                )}
+
+                {/* Ações de aprovação (modo de seleção) */}
+                {isSelectionMode && selectedDocuments.length > 0 && (
+                    <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.rejectButton]}
+                            onPress={handleRejectSelected}
+                        >
+                            <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+                            <Text style={styles.actionButtonText}>Reprovar</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.approveButton]}
+                            onPress={handleApproveSelected}
+                        >
+                            <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                            <Text style={styles.actionButtonText}>Aprovar</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Modal de filtros */}
+                <FilterModal
+                    visible={isFilterModalVisible}
+                    onClose={() => setIsFilterModalVisible(false)}
+                    currentFilters={filters}
+                    onApplyFilters={setFilters}
                 />
             </View>
-
-            {/* Modo de seleção header */}
-            {isSelectionMode && (
-                <View style={styles.selectionHeader}>
-                    <Text style={[styles.selectionText, { color: theme.colors.text }]}>
-                        {selectedDocuments.length} selecionado(s)
-                    </Text>
-                    <TouchableOpacity onPress={handleSelectAll}>
-                        <Text style={[styles.selectAllText, { color: theme.colors.primary }]}>
-                            Selecionar Todos
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* Filtros ativos */}
-            {Object.keys(filters).length > 0 && (
-                <View style={styles.activeFilters}>
-                    <Text style={[styles.filtersText, { color: theme.colors.textSecondary }]}>
-                        Filtros ativos
-                    </Text>
-                    <TouchableOpacity onPress={clearFilters}>
-                        <Text style={[styles.clearFiltersText, { color: theme.colors.primary }]}>
-                            Limpar
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* Error message */}
-            {error && (
-                <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <TouchableOpacity onPress={clearError}>
-                        <Ionicons name="close" size={20} color="#FFFFFF" />
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* Lista de documentos */}
-            <FlatList
-                ref={flatListRef}
-                data={documents}
-                keyExtractor={(item) => `${item.scrId}-${item.documentNumber}`}
-                renderItem={renderDocument}
-                ListEmptyComponent={!isLoading ? renderEmptyList : null}
-                ListFooterComponent={renderLoadingFooter}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isRefreshing}
-                        onRefresh={refreshDocuments}
-                        tintColor={theme.colors.primary}
-                        colors={[theme.colors.primary]}
-                    />
-                }
-                onEndReached={() => {
-                    if (hasNextPage && !isLoadingMore) {
-                        loadMoreDocuments();
-                    }
-                }}
-                onEndReachedThreshold={0.1}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={documents.length === 0 ? styles.emptyListContainer : undefined}
-            />
-
-            {/* Loading overlay */}
-            {isLoading && (
-                <View style={styles.loadingOverlay}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
-                    <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-                        Carregando documentos...
-                    </Text>
-                </View>
-            )}
-
-            {/* Ações de aprovação (modo de seleção) */}
-            {isSelectionMode && selectedDocuments.length > 0 && (
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.rejectButton]}
-                        onPress={handleRejectSelected}
-                    >
-                        <Ionicons name="close-circle" size={20} color="#FFFFFF" />
-                        <Text style={styles.actionButtonText}>Reprovar</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.approveButton]}
-                        onPress={handleApproveSelected}
-                    >
-                        <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                        <Text style={styles.actionButtonText}>Aprovar</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            {/* Modal de filtros */}
-            <FilterModal
-                visible={isFilterModalVisible}
-                onClose={() => setIsFilterModalVisible(false)}
-                currentFilters={filters}
-                onApplyFilters={setFilters}
-            />
         </SafeArea>
     );
 }

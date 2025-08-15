@@ -83,45 +83,6 @@ export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
     '06': 'Reprovado'
 };
 
-export const SORT_OPTIONS: SortOption[] = [
-    {
-        key: 'value_desc',
-        label: 'Maior valor',
-        field: 'documentTotal',
-        direction: 'desc'
-    },
-    {
-        key: 'value_asc',
-        label: 'Menor valor',
-        field: 'documentTotal',
-        direction: 'asc'
-    },
-    {
-        key: 'date_desc',
-        label: 'Mais recente',
-        field: 'documentCreated',
-        direction: 'desc'
-    },
-    {
-        key: 'date_asc',
-        label: 'Mais antigo',
-        field: 'documentCreated',
-        direction: 'asc'
-    },
-    {
-        key: 'type_asc',
-        label: 'Tipo de documento ASC',
-        field: 'documentType',
-        direction: 'asc'
-    },
-    {
-        key: 'type_desc',
-        label: 'Tipo de documento DESC',
-        field: 'documentType',
-        direction: 'desc'
-    }
-];
-
 // Utilitários para formatação
 export const formatCurrency = (value: number, symbol: string): string => {
     return `${symbol} ${value.toLocaleString('pt-BR', {

@@ -6,9 +6,48 @@ import type {
     DocumentStatus,
     DocumentType,
     FilterState,
-    SORT_OPTIONS,
     SortOption
 } from '../types/approvals';
+
+// Definir SORT_OPTIONS aqui no store
+const SORT_OPTIONS: SortOption[] = [
+    {
+        key: 'value_desc',
+        label: 'Maior valor',
+        field: 'documentTotal',
+        direction: 'desc'
+    },
+    {
+        key: 'value_asc',
+        label: 'Menor valor',
+        field: 'documentTotal',
+        direction: 'asc'
+    },
+    {
+        key: 'date_desc',
+        label: 'Mais recente',
+        field: 'documentCreated',
+        direction: 'desc'
+    },
+    {
+        key: 'date_asc',
+        label: 'Mais antigo',
+        field: 'documentCreated',
+        direction: 'asc'
+    },
+    {
+        key: 'type_asc',
+        label: 'Tipo de documento ASC',
+        field: 'documentType',
+        direction: 'asc'
+    },
+    {
+        key: 'type_desc',
+        label: 'Tipo de documento DESC',
+        field: 'documentType',
+        direction: 'desc'
+    }
+];
 
 interface ApprovalsState {
     // Estado dos documentos
@@ -60,6 +99,7 @@ interface ApprovalsState {
     // Utilitários
     setCurrentStatus: (status: DocumentStatus) => void;
     clearError: () => void;
+    getSortOptions: () => SortOption[];
 }
 
 export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
@@ -77,7 +117,48 @@ export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
     filters: {},
     sortOption: SORT_OPTIONS[2], // Mais recente por padrão
 
-    dashboardSummary: {},
+    dashboardSummary: {
+        PC: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        IP: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        AE: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        SC: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        MD: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        IM: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        CT: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        },
+        SA: {
+            pending: 0,
+            approved: 0,
+            rejected: 0
+        }
+    },
     isDashboardLoading: false,
 
     // Carregamento de documentos
@@ -303,5 +384,9 @@ export const useApprovalsStore = create<ApprovalsState>((set, get) => ({
 
     clearError: () => {
         set({ error: null });
+    },
+
+    getSortOptions: () => {
+        return SORT_OPTIONS;
     }
 }));

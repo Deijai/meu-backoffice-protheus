@@ -34,23 +34,66 @@ const StatusSection: React.FC<StatusSectionProps> = ({
 }) => {
     const { theme } = useThemeStore();
 
+    const statusStyles = StyleSheet.create({
+        statusSection: {
+            borderLeftWidth: 4,
+            borderLeftColor: color,
+            paddingLeft: 12,
+            paddingVertical: 8,
+        },
+        statusContent: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        statusLabel: {
+            fontSize: 14,
+            fontWeight: '500',
+            color: theme.colors.textSecondary,
+        },
+        statusCountContainer: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        statusCount: {
+            fontSize: 16,
+            fontWeight: '700',
+            color: theme.colors.text,
+        },
+        badge: {
+            backgroundColor: color,
+            borderRadius: 12,
+            minWidth: 24,
+            height: 24,
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginLeft: 8,
+        },
+        badgeText: {
+            color: '#FFFFFF',
+            fontSize: 12,
+            fontWeight: '600',
+            textAlign: 'center',
+        },
+    });
+
     return (
         <TouchableOpacity
-            style={[styles.statusSection, { borderLeftColor: color }]}
+            style={statusStyles.statusSection}
             onPress={onPress}
             activeOpacity={0.7}
         >
-            <View style={styles.statusContent}>
-                <Text style={[styles.statusLabel, { color: theme.colors.textSecondary }]}>
+            <View style={statusStyles.statusContent}>
+                <Text style={statusStyles.statusLabel}>
                     {label}
                 </Text>
-                <View style={styles.statusCountContainer}>
-                    <Text style={[styles.statusCount, { color: theme.colors.text }]}>
+                <View style={statusStyles.statusCountContainer}>
+                    <Text style={statusStyles.statusCount}>
                         {count}
                     </Text>
                     {showBadge && count > 0 && (
-                        <View style={[styles.badge, { backgroundColor: color }]}>
-                            <Text style={styles.badgeText}>{count}</Text>
+                        <View style={statusStyles.badge}>
+                            <Text style={statusStyles.badgeText}>{count}</Text>
                         </View>
                     )}
                 </View>
@@ -70,7 +113,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
     const navigateToApprovals = (status: '02' | '03' | '06') => {
         // Navega para a página de aprovações com filtros aplicados
         router.push({
-            pathname: '/approvals',
+            pathname: '/(app)/(tabs)/approvals',
             params: {
                 documentType,
                 status,
@@ -79,39 +122,102 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
         });
     };
 
-    const styles = createStyles(theme);
+    const cardStyles = StyleSheet.create({
+        container: {
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 16,
+            margin: 8,
+            elevation: 3,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+            minHeight: 200,
+        },
+        loadingContent: {
+            flex: 1,
+            justifyContent: 'center',
+        },
+        loadingPlaceholder: {
+            height: 16,
+            backgroundColor: theme.colors.border,
+            borderRadius: 8,
+            opacity: 0.6,
+        },
+        header: {
+            marginBottom: 16,
+        },
+        titleContainer: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        icon: {
+            marginRight: 12,
+        },
+        title: {
+            fontSize: 18,
+            fontWeight: '600',
+            color: theme.colors.text,
+            flex: 1,
+            lineHeight: 22,
+        },
+        statusContainer: {
+            flex: 1,
+            gap: 12,
+        },
+        footer: {
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            paddingTop: 12,
+            marginTop: 8,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        totalLabel: {
+            fontSize: 14,
+            color: theme.colors.textSecondary,
+            fontWeight: '500',
+        },
+        totalCount: {
+            fontSize: 18,
+            fontWeight: '700',
+            color: theme.colors.primary,
+        },
+    });
 
     if (isLoading) {
         return (
-            <View style={styles.container}>
-                <View style={styles.loadingContent}>
-                    <View style={styles.loadingPlaceholder} />
-                    <View style={[styles.loadingPlaceholder, { width: '60%', marginTop: 8 }]} />
-                    <View style={[styles.loadingPlaceholder, { width: '40%', marginTop: 4 }]} />
+            <View style={cardStyles.container}>
+                <View style={cardStyles.loadingContent}>
+                    <View style={cardStyles.loadingPlaceholder} />
+                    <View style={[cardStyles.loadingPlaceholder, { width: '60%', marginTop: 8 }]} />
+                    <View style={[cardStyles.loadingPlaceholder, { width: '40%', marginTop: 4 }]} />
                 </View>
             </View>
         );
     }
 
     return (
-        <View style={styles.container}>
+        <View style={cardStyles.container}>
             {/* Header do card */}
-            <View style={styles.header}>
-                <View style={styles.titleContainer}>
+            <View style={cardStyles.header}>
+                <View style={cardStyles.titleContainer}>
                     <Ionicons
                         name={documentTypeIcon as any}
                         size={24}
                         color={theme.colors.primary}
-                        style={styles.icon}
+                        style={cardStyles.icon}
                     />
-                    <Text style={styles.title} numberOfLines={2}>
+                    <Text style={cardStyles.title} numberOfLines={2}>
                         {DOCUMENT_TYPES[documentType]}
                     </Text>
                 </View>
             </View>
 
             {/* Seções de status */}
-            <View style={styles.statusContainer}>
+            <View style={cardStyles.statusContainer}>
                 <StatusSection
                     label="Pendentes"
                     count={summary.pending}
@@ -136,9 +242,9 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
             </View>
 
             {/* Total de documentos */}
-            <View style={styles.footer}>
-                <Text style={styles.totalLabel}>Total de documentos</Text>
-                <Text style={styles.totalCount}>
+            <View style={cardStyles.footer}>
+                <Text style={cardStyles.totalLabel}>Total de documentos</Text>
+                <Text style={cardStyles.totalCount}>
                     {summary.pending + summary.approved + summary.rejected}
                 </Text>
             </View>
@@ -146,121 +252,4 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
     );
 };
 
-const createStyles = (theme: any) => StyleSheet.create({
-    container: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 16,
-        padding: 16,
-        margin: 8,
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-        minHeight: 200,
-    },
-
-    loadingContent: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-
-    loadingPlaceholder: {
-        height: 16,
-        backgroundColor: theme.colors.border,
-        borderRadius: 8,
-        opacity: 0.6,
-    },
-
-    header: {
-        marginBottom: 16,
-    },
-
-    titleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    icon: {
-        marginRight: 12,
-    },
-
-    title: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: theme.colors.text,
-        flex: 1,
-        lineHeight: 22,
-    },
-
-    statusContainer: {
-        flex: 1,
-        gap: 12,
-    },
-
-    statusSection: {
-        borderLeftWidth: 4,
-        paddingLeft: 12,
-        paddingVertical: 8,
-    },
-
-    statusContent: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-
-    statusLabel: {
-        fontSize: 14,
-        fontWeight: '500',
-    },
-
-    statusCountContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    statusCount: {
-        fontSize: 16,
-        fontWeight: '700',
-    },
-
-    badge: {
-        backgroundColor: '#0c9abe',
-        borderRadius: 12,
-        minWidth: 24,
-        height: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 8,
-    },
-
-    badgeText: {
-        color: '#FFFFFF',
-        fontSize: 12,
-        fontWeight: '600',
-        textAlign: 'center',
-    },
-
-    footer: {
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.border,
-        paddingTop: 12,
-        marginTop: 8,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-
-    totalLabel: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        fontWeight: '500',
-    },
-
-    totalCount: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: theme.colors.primary,
-    },
-});
+// Removendo a função createStyles que não é mais necessária
