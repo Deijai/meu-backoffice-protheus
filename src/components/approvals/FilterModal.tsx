@@ -1,4 +1,4 @@
-// src/components/approvals/FilterModal.tsx
+// src/components/approvals/FilterModal.tsx - CORRIGIDO
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
@@ -10,7 +10,6 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-import { approvalsService } from '../../services/api/approvalsService';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import type { DocumentType, FilterState } from '../../types/approvals';
@@ -43,44 +42,19 @@ const CheckboxItem: React.FC<CheckboxItemProps> = ({
 }) => {
     const { theme } = useThemeStore();
 
-    const checkboxStyles = StyleSheet.create({
-        item: {
-            paddingVertical: 4,
-        },
-        content: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-        },
-        textContainer: {
-            flex: 1,
-            marginRight: 12,
-        },
-        title: {
-            fontSize: 16,
-            fontWeight: '500',
-            color: theme.colors.text,
-        },
-        subtitle: {
-            fontSize: 12,
-            marginTop: 2,
-            color: theme.colors.textSecondary,
-        },
-    });
-
     return (
         <TouchableOpacity
-            style={checkboxStyles.item}
+            style={styles.checkboxItem}
             onPress={onToggle}
             activeOpacity={0.7}
         >
-            <View style={checkboxStyles.content}>
-                <View style={checkboxStyles.textContainer}>
-                    <Text style={checkboxStyles.title}>
+            <View style={styles.checkboxContent}>
+                <View style={styles.checkboxTextContainer}>
+                    <Text style={[styles.checkboxTitle, { color: theme.colors.text }]}>
                         {title}
                     </Text>
                     {subtitle && (
-                        <Text style={checkboxStyles.subtitle}>
+                        <Text style={[styles.checkboxSubtitle, { color: theme.colors.textSecondary }]}>
                             {subtitle}
                         </Text>
                     )}
@@ -116,70 +90,23 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         currentFilters.documentTypes || []
     );
 
-    // Estados de dados
-    const [availableBranches, setAvailableBranches] = useState<Array<{ code: string; name: string; }>>([]);
-    const [isLoadingBranches, setIsLoadingBranches] = useState(false);
-
     // Informações do módulo atual
     const moduleCode = selectedModule?.code;
     const moduleInfo = moduleCode ? getModuleInfo(moduleCode) : null;
     const hasDocuments = moduleCode ? hasDocumentsForApproval(moduleCode) : false;
     const availableDocumentTypes = moduleCode ? getDocumentTypesForModule(moduleCode) : [];
 
-    // Carrega filiais disponíveis quando o modal abre
+    // Sincronizar estado local com filtros externos
     useEffect(() => {
-        if (visible) {
-            loadAvailableBranches();
-            resetFilters();
-        }
-    }, [visible]);
-
-    // Filtra tipos de documentos para manter apenas os válidos para o módulo atual
-    useEffect(() => {
-        if (availableDocumentTypes.length > 0) {
-            setSelectedTypes(prev =>
-                prev.filter(type => availableDocumentTypes.includes(type))
-            );
-        }
-    }, [availableDocumentTypes]);
-
-    const resetFilters = () => {
         setSearchText(currentFilters.searchkey || '');
         setInitDate(currentFilters.initDate || '');
         setEndDate(currentFilters.endDate || '');
         setSelectedBranches(currentFilters.documentBranch || []);
+        setSelectedTypes(currentFilters.documentTypes || []);
+    }, [currentFilters]);
 
-        // Filtra tipos para manter apenas os válidos para o módulo atual
-        const validTypes = (currentFilters.documentTypes || [])
-            .filter(type => availableDocumentTypes.includes(type));
-        setSelectedTypes(validTypes);
-    };
-
-    const loadAvailableBranches = async () => {
-        setIsLoadingBranches(true);
-        try {
-            const branches = await approvalsService.getAvailableBranchesWithNames();
-            setAvailableBranches(branches);
-        } catch (error) {
-            console.error('Erro ao carregar filiais:', error);
-        }
-        setIsLoadingBranches(false);
-    };
-
-    const toggleBranch = (branchCode: string) => {
-        setSelectedBranches(prev =>
-            prev.includes(branchCode)
-                ? prev.filter(b => b !== branchCode)
-                : [...prev, branchCode]
-        );
-    };
-
+    // Handlers
     const toggleDocumentType = (type: DocumentType) => {
-        // Só permite toggle se o tipo for válido para o módulo atual
-        if (!availableDocumentTypes.includes(type)) {
-            return;
-        }
-
         setSelectedTypes(prev =>
             prev.includes(type)
                 ? prev.filter(t => t !== type)
@@ -187,34 +114,20 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         );
     };
 
-    const selectAllBranches = () => {
-        const allBranchCodes = availableBranches.map(b => b.code);
-        setSelectedBranches(
-            selectedBranches.length === allBranchCodes.length
-                ? []
-                : allBranchCodes
+    const toggleBranch = (branch: string) => {
+        setSelectedBranches(prev =>
+            prev.includes(branch)
+                ? prev.filter(b => b !== branch)
+                : [...prev, branch]
         );
     };
 
-    const selectAllTypes = () => {
-        setSelectedTypes(
-            selectedTypes.length === availableDocumentTypes.length
-                ? []
-                : [...availableDocumentTypes]
-        );
-    };
-
-    const handleApplyFilters = () => {
-        const newFilters: FilterState = {
-            searchkey: searchText.trim() || undefined,
-            initDate: initDate || undefined,
-            endDate: endDate || undefined,
-            documentBranch: selectedBranches.length > 0 ? selectedBranches : undefined,
-            documentTypes: selectedTypes.length > 0 ? selectedTypes : undefined,
-        };
-
-        onApplyFilters(newFilters);
-        onClose();
+    const handleSelectAllTypes = () => {
+        if (selectedTypes.length === availableDocumentTypes.length) {
+            setSelectedTypes([]);
+        } else {
+            setSelectedTypes([...availableDocumentTypes]);
+        }
     };
 
     const handleClearFilters = () => {
@@ -223,56 +136,62 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         setEndDate('');
         setSelectedBranches([]);
         setSelectedTypes([]);
-        onApplyFilters({});
+    };
+
+    const handleApplyFilters = () => {
+        const filters: FilterState = {};
+
+        if (searchText.trim()) {
+            filters.searchkey = searchText.trim();
+        }
+        if (initDate) {
+            filters.initDate = initDate;
+        }
+        if (endDate) {
+            filters.endDate = endDate;
+        }
+        if (selectedBranches.length > 0) {
+            filters.documentBranch = selectedBranches;
+        }
+        if (selectedTypes.length > 0) {
+            filters.documentTypes = selectedTypes;
+        }
+
+        onApplyFilters(filters);
         onClose();
     };
 
     const hasActiveFilters = () => {
-        return searchText.trim() ||
-            initDate ||
-            endDate ||
+        return searchText.trim() !== '' ||
+            initDate !== '' ||
+            endDate !== '' ||
             selectedBranches.length > 0 ||
             selectedTypes.length > 0;
     };
 
-    const renderNoDocumentsMessage = () => (
-        <View style={styles.noDocumentsContainer}>
-            <Ionicons
-                name="information-circle-outline"
-                size={64}
-                color={theme.colors.textSecondary}
-            />
-            <Text style={[styles.noDocumentsTitle, { color: theme.colors.text }]}>
-                Módulo sem Documentos de Aprovação
-            </Text>
-            <Text style={[styles.noDocumentsText, { color: theme.colors.textSecondary }]}>
-                O módulo {moduleInfo?.name} não possui documentos que necessitem de aprovação.
-                {'\n\n'}
-                Para filtrar documentos de aprovação, selecione um dos seguintes módulos:
-                {'\n'}• Compras (SIGACOM)
-                {'\n'}• Contratos (SIGAGCT)
-                {'\n'}• Estoque (SIGAEST)
-            </Text>
-        </View>
-    );
-
     const renderNoModuleMessage = () => (
-        <View style={styles.noDocumentsContainer}>
-            <Ionicons
-                name="warning-outline"
-                size={64}
-                color={theme.colors.textSecondary}
-            />
-            <Text style={[styles.noDocumentsTitle, { color: theme.colors.text }]}>
+        <View style={styles.emptyContainer}>
+            <Ionicons name="cube-outline" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
                 Nenhum Módulo Selecionado
             </Text>
-            <Text style={[styles.noDocumentsText, { color: theme.colors.textSecondary }]}>
-                Selecione um módulo primeiro para aplicar filtros.
+            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                Selecione um módulo primeiro para filtrar documentos de aprovação.
             </Text>
         </View>
     );
 
-    const styles = createStyles(theme, moduleInfo?.color);
+    const renderNoDocumentsMessage = () => (
+        <View style={styles.emptyContainer}>
+            <Ionicons name="information-circle-outline" size={48} color={theme.colors.textSecondary} />
+            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                Módulo sem Documentos
+            </Text>
+            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                O módulo {moduleInfo?.name} não possui documentos que necessitem de aprovação.
+            </Text>
+        </View>
+    );
 
     return (
         <Modal
@@ -281,23 +200,27 @@ export const FilterModal: React.FC<FilterModalProps> = ({
             presentationStyle="pageSheet"
             onRequestClose={onClose}
         >
-            <View style={styles.container}>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 {/* Header */}
-                <View style={styles.header}>
+                <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
                     <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                         <Ionicons name="close" size={24} color={theme.colors.text} />
                     </TouchableOpacity>
 
                     <View style={styles.titleContainer}>
-                        <Text style={styles.title}>Filtros</Text>
+                        <Text style={[styles.title, { color: theme.colors.text }]}>Filtros</Text>
                         {moduleInfo && (
-                            <Text style={styles.moduleSubtitle}>{moduleInfo.name}</Text>
+                            <Text style={[styles.moduleSubtitle, { color: theme.colors.textSecondary }]}>
+                                {moduleInfo.name}
+                            </Text>
                         )}
                     </View>
 
                     {hasActiveFilters() && hasDocuments && (
                         <TouchableOpacity onPress={handleClearFilters} style={styles.clearButton}>
-                            <Text style={styles.clearText}>Limpar</Text>
+                            <Text style={[styles.clearText, { color: theme.colors.primary }]}>
+                                Limpar
+                            </Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -311,7 +234,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                     ) : (
                         <>
                             {/* Info do módulo atual */}
-                            <View style={styles.moduleSection}>
+                            <View style={[styles.moduleSection, { backgroundColor: theme.colors.surface }]}>
                                 <View style={styles.moduleHeader}>
                                     <Ionicons
                                         name={moduleInfo!.icon as any}
@@ -326,8 +249,10 @@ export const FilterModal: React.FC<FilterModalProps> = ({
 
                             {/* Busca por texto */}
                             <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Busca</Text>
-                                <View style={styles.inputContainer}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                                    Busca
+                                </Text>
+                                <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface }]}>
                                     <Ionicons
                                         name="search"
                                         size={20}
@@ -335,103 +260,71 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                                         style={styles.inputIcon}
                                     />
                                     <TextInput
-                                        style={styles.textInput}
+                                        style={[styles.textInput, { color: theme.colors.text }]}
                                         placeholder="Digite para buscar..."
                                         placeholderTextColor={theme.colors.textSecondary}
                                         value={searchText}
                                         onChangeText={setSearchText}
                                     />
                                 </View>
-                                <Text style={styles.helpText}>
-                                    Busca por número do documento, descrição ou observações
+                            </View>
+
+                            {/* Período */}
+                            <View style={styles.section}>
+                                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                                    Período
                                 </Text>
-                            </View>
-
-                            {/* Filtro por data */}
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Período</Text>
-                                <View style={styles.dateRow}>
-                                    <View style={styles.dateInput}>
-                                        <Text style={styles.dateLabel}>Data Inicial</Text>
-                                        <View style={styles.inputContainer}>
-                                            <Ionicons
-                                                name="calendar"
-                                                size={20}
-                                                color={theme.colors.textSecondary}
-                                                style={styles.inputIcon}
-                                            />
-                                            <TextInput
-                                                style={styles.textInput}
-                                                placeholder="DD/MM/AAAA"
-                                                placeholderTextColor={theme.colors.textSecondary}
-                                                value={initDate}
-                                                onChangeText={setInitDate}
-                                            />
-                                        </View>
+                                <View style={styles.dateContainer}>
+                                    <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, flex: 1 }]}>
+                                        <Ionicons
+                                            name="calendar"
+                                            size={20}
+                                            color={theme.colors.textSecondary}
+                                            style={styles.inputIcon}
+                                        />
+                                        <TextInput
+                                            style={[styles.textInput, { color: theme.colors.text }]}
+                                            placeholder="Data inicial"
+                                            placeholderTextColor={theme.colors.textSecondary}
+                                            value={initDate}
+                                            onChangeText={setInitDate}
+                                        />
                                     </View>
 
-                                    <View style={styles.dateInput}>
-                                        <Text style={styles.dateLabel}>Data Final</Text>
-                                        <View style={styles.inputContainer}>
-                                            <Ionicons
-                                                name="calendar"
-                                                size={20}
-                                                color={theme.colors.textSecondary}
-                                                style={styles.inputIcon}
-                                            />
-                                            <TextInput
-                                                style={styles.textInput}
-                                                placeholder="DD/MM/AAAA"
-                                                placeholderTextColor={theme.colors.textSecondary}
-                                                value={endDate}
-                                                onChangeText={setEndDate}
-                                            />
-                                        </View>
-                                    </View>
-                                </View>
-                            </View>
-
-                            {/* Filtro por filial */}
-                            <View style={styles.section}>
-                                <View style={styles.sectionHeader}>
-                                    <Text style={styles.sectionTitle}>Filiais</Text>
-                                    <TouchableOpacity onPress={selectAllBranches}>
-                                        <Text style={styles.selectAllText}>
-                                            {selectedBranches.length === availableBranches.length ?
-                                                'Desmarcar Todas' : 'Selecionar Todas'}
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-
-                                {isLoadingBranches ? (
-                                    <View style={styles.loadingContainer}>
-                                        <Text style={styles.loadingText}>Carregando filiais...</Text>
-                                    </View>
-                                ) : (
-                                    <View style={styles.checkboxContainer}>
-                                        {availableBranches.map((branch, index) => (
-                                            <CheckboxItem
-                                                key={branch.code + index}
-                                                title={branch.name}
-                                                subtitle={branch.code}
-                                                isChecked={selectedBranches.includes(branch.code)}
-                                                onToggle={() => toggleBranch(branch.code)}
-                                            />
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Filtro por Tipo de Documento do módulo atual */}
-                            <View style={styles.section}>
-                                <View style={styles.sectionHeader}>
-                                    <Text style={styles.sectionTitle}>
-                                        Tipos de Documento - {moduleInfo!.name}
+                                    <Text style={[styles.dateSeparator, { color: theme.colors.textSecondary }]}>
+                                        até
                                     </Text>
-                                    <TouchableOpacity onPress={selectAllTypes}>
-                                        <Text style={styles.selectAllText}>
-                                            {selectedTypes.length === availableDocumentTypes.length ?
-                                                'Desmarcar Todos' : 'Selecionar Todos'}
+
+                                    <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, flex: 1 }]}>
+                                        <Ionicons
+                                            name="calendar"
+                                            size={20}
+                                            color={theme.colors.textSecondary}
+                                            style={styles.inputIcon}
+                                        />
+                                        <TextInput
+                                            style={[styles.textInput, { color: theme.colors.text }]}
+                                            placeholder="Data final"
+                                            placeholderTextColor={theme.colors.textSecondary}
+                                            value={endDate}
+                                            onChangeText={setEndDate}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Tipos de Documento */}
+                            <View style={styles.section}>
+                                <View style={styles.sectionHeader}>
+                                    <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                                        Tipos de Documento
+                                    </Text>
+                                    <TouchableOpacity onPress={handleSelectAllTypes}>
+                                        <Text style={[styles.selectAllText, { color: theme.colors.primary }]}>
+                                            {selectedTypes.length === availableDocumentTypes.length
+                                                ? 'Desmarcar Todos'
+                                                : 'Selecionar Todos'
+                                            }
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
@@ -456,80 +349,28 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                                     </View>
                                 )}
                             </View>
-
-                            {/* Resumo dos filtros aplicados */}
-                            {hasActiveFilters() && (
-                                <View style={styles.summarySection}>
-                                    <Text style={styles.summaryTitle}>Filtros Ativos</Text>
-
-                                    {searchText && (
-                                        <View style={styles.summaryItem}>
-                                            <Ionicons name="search" size={16} color={theme.colors.primary} />
-                                            <Text style={styles.summaryText}>Busca: "{searchText}"</Text>
-                                        </View>
-                                    )}
-
-                                    {(initDate || endDate) && (
-                                        <View style={styles.summaryItem}>
-                                            <Ionicons name="calendar" size={16} color={theme.colors.primary} />
-                                            <Text style={styles.summaryText}>
-                                                Período: {initDate || '...'} até {endDate || '...'}
-                                            </Text>
-                                        </View>
-                                    )}
-
-                                    {selectedBranches.length > 0 && (
-                                        <View style={styles.summaryItem}>
-                                            <Ionicons name="business" size={16} color={theme.colors.primary} />
-                                            <Text style={styles.summaryText}>
-                                                {selectedBranches.length} filial(is) selecionada(s)
-                                            </Text>
-                                        </View>
-                                    )}
-
-                                    {selectedTypes.length > 0 && (
-                                        <View style={styles.summaryItem}>
-                                            <Ionicons name="document" size={16} color={theme.colors.primary} />
-                                            <Text style={styles.summaryText}>
-                                                {selectedTypes.length} tipo(s) de documento
-                                            </Text>
-                                        </View>
-                                    )}
-                                </View>
-                            )}
                         </>
                     )}
                 </ScrollView>
 
-                {/* Footer com ações */}
-                {hasDocuments ? (
-                    <View style={styles.footer}>
+                {/* Footer com botões */}
+                {hasDocuments && (
+                    <View style={[styles.footer, { backgroundColor: theme.colors.surface }]}>
                         <TouchableOpacity
-                            style={[styles.button, styles.cancelButton]}
+                            style={[styles.footerButton, styles.cancelButton]}
                             onPress={onClose}
                         >
-                            <Text style={[styles.buttonText, { color: theme.colors.text }]}>
+                            <Text style={[styles.cancelButtonText, { color: theme.colors.textSecondary }]}>
                                 Cancelar
                             </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.button, styles.applyButton, { backgroundColor: theme.colors.primary }]}
+                            style={[styles.footerButton, styles.applyButton, { backgroundColor: theme.colors.primary }]}
                             onPress={handleApplyFilters}
                         >
-                            <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
+                            <Text style={styles.applyButtonText}>
                                 Aplicar Filtros
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <View style={styles.simpleFooter}>
-                        <TouchableOpacity
-                            style={[styles.button, { backgroundColor: theme.colors.primary }]}
-                            onPress={onClose}
-                        >
-                            <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
-                                Fechar
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -539,256 +380,178 @@ export const FilterModal: React.FC<FilterModalProps> = ({
     );
 };
 
-const createStyles = (theme: any, moduleColor?: string) => StyleSheet.create({
+const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.background,
     },
-
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingTop: 60,
-        paddingBottom: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        borderBottomColor: 'rgba(0, 0, 0, 0.1)',
     },
-
     closeButton: {
         padding: 8,
+        marginRight: 8,
     },
-
     titleContainer: {
         flex: 1,
-        alignItems: 'center',
     },
-
     title: {
         fontSize: 18,
         fontWeight: '600',
-        color: theme.colors.text,
     },
-
     moduleSubtitle: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
+        fontSize: 14,
         marginTop: 2,
     },
-
     clearButton: {
         padding: 8,
     },
-
     clearText: {
-        fontSize: 16,
-        color: theme.colors.error,
-        fontWeight: '500',
+        fontSize: 14,
+        fontWeight: '600',
     },
-
     content: {
         flex: 1,
     },
-
     moduleSection: {
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        backgroundColor: moduleColor ? `${moduleColor}10` : theme.colors.surface,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        margin: 16,
+        padding: 16,
+        borderRadius: 8,
     },
-
     moduleHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
     },
-
     moduleHeaderText: {
         fontSize: 14,
         fontWeight: '500',
     },
-
     section: {
-        padding: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
+        marginHorizontal: 16,
+        marginBottom: 24,
     },
-
     sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: 12,
     },
-
     sectionTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 16,
+        marginBottom: 12,
     },
-
     selectAllText: {
         fontSize: 14,
-        color: theme.colors.primary,
-        fontWeight: '500',
+        fontWeight: '600',
     },
-
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        paddingHorizontal: 16,
+        borderRadius: 8,
+        paddingHorizontal: 12,
         paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.1)',
     },
-
     inputIcon: {
-        marginRight: 12,
+        marginRight: 8,
     },
-
     textInput: {
         flex: 1,
         fontSize: 16,
-        color: theme.colors.text,
     },
-
-    dateRow: {
+    dateContainer: {
         flexDirection: 'row',
+        alignItems: 'center',
         gap: 12,
     },
-
-    dateInput: {
-        flex: 1,
-    },
-
-    dateLabel: {
+    dateSeparator: {
         fontSize: 14,
         fontWeight: '500',
-        color: theme.colors.text,
-        marginBottom: 8,
     },
-
-    helpText: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        marginTop: 8,
-        fontStyle: 'italic',
-    },
-
-    loadingContainer: {
-        paddingVertical: 20,
-        alignItems: 'center',
-    },
-
-    loadingText: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-    },
-
     checkboxContainer: {
         gap: 8,
     },
-
+    checkboxItem: {
+        paddingVertical: 4,
+    },
+    checkboxContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    checkboxTextContainer: {
+        flex: 1,
+        marginRight: 12,
+    },
+    checkboxTitle: {
+        fontSize: 16,
+        fontWeight: '500',
+    },
+    checkboxSubtitle: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 32,
+    },
+    emptyTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    emptyText: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginTop: 8,
+        lineHeight: 20,
+    },
     emptyTypesContainer: {
-        paddingVertical: 20,
+        padding: 16,
         alignItems: 'center',
     },
-
     emptyTypesText: {
         fontSize: 14,
         textAlign: 'center',
     },
-
-    noDocumentsContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 40,
-        paddingVertical: 80,
-    },
-
-    noDocumentsTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        marginTop: 16,
-        marginBottom: 16,
-        textAlign: 'center',
-    },
-
-    noDocumentsText: {
-        fontSize: 14,
-        textAlign: 'center',
-        lineHeight: 22,
-    },
-
-    summarySection: {
-        margin: 20,
-        padding: 16,
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-    },
-
-    summaryTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 12,
-    },
-
-    summaryItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-
-    summaryText: {
-        fontSize: 14,
-        color: theme.colors.text,
-        marginLeft: 8,
-        flex: 1,
-    },
-
     footer: {
         flexDirection: 'row',
-        padding: 20,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.border,
+        padding: 16,
         gap: 12,
-    },
-
-    simpleFooter: {
-        padding: 20,
-        paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: theme.colors.border,
+        borderTopColor: 'rgba(0, 0, 0, 0.1)',
     },
-
-    button: {
+    footerButton: {
         flex: 1,
-        paddingVertical: 14,
-        borderRadius: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 8,
         alignItems: 'center',
+        justifyContent: 'center',
     },
-
     cancelButton: {
-        backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderColor: 'rgba(0, 0, 0, 0.2)',
     },
-
     applyButton: {
-        // backgroundColor definido dinamicamente
+        // backgroundColor é definido inline
     },
-
-    buttonText: {
+    cancelButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    applyButtonText: {
+        color: 'white',
         fontSize: 16,
         fontWeight: '600',
     },

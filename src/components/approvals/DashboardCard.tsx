@@ -113,7 +113,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
     const navigateToApprovals = (status: '02' | '03' | '06') => {
         // Navega para a página de aprovações com filtros aplicados
         router.push({
-            pathname: '/(app)/(tabs)/approvals',
+            pathname: '/approvals',
             params: {
                 documentType,
                 status,
