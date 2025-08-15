@@ -33,7 +33,20 @@ export interface PurchaseRequest {
     CostCenter: string;
 }
 
-export type DocumentType = 'PC' | 'IP' | 'AE' | 'SC' | 'MD' | 'IM' | 'CT' | 'SA';
+// Tipos de documentos organizados por módulo do Protheus
+export type DocumentType =
+    // Módulo de Compras (SIGACOM)
+    | 'PC'  // Pedido de Compra
+    | 'IP'  // Pedido de Compra por Item
+    | 'AE'  // Autorização de Entrega
+    | 'SC'  // Solicitação de Compra
+    // Módulo de Contratos (SIGAGCT - Gestão de Contratos)
+    | 'CT'  // Contratos
+    | 'MD'  // Medição de Contratos
+    | 'IM'  // Medição de Contratos por Item
+    // Módulo de Estoque (SIGAEST)
+    | 'SA'; // Solicitação ao Armazém
+
 export type DocumentStatus = '02' | '03' | '06'; // Pendente, Aprovado, Reprovado
 
 export interface DocumentsResponse {
@@ -66,21 +79,114 @@ export interface SortOption {
     direction: 'asc' | 'desc';
 }
 
+// Mapeamento dos códigos dos módulos do Protheus para os tipos de documentos
+export const MODULE_DOCUMENT_TYPES: Record<string, {
+    name: string;
+    documentTypes: DocumentType[];
+    color: string;
+    icon: string;
+}> = {
+    'SIGACOM': {
+        name: 'Compras',
+        documentTypes: ['PC', 'IP', 'AE', 'SC'],
+        color: '#805ad5',
+        icon: 'bag-outline'
+    },
+    'SIGAGCT': {
+        name: 'Contratos',
+        documentTypes: ['CT', 'MD', 'IM'],
+        color: '#d69e2e',
+        icon: 'document-text-outline'
+    },
+    'SIGAEST': {
+        name: 'Estoque',
+        documentTypes: ['SA'],
+        color: '#38a169',
+        icon: 'cube-outline'
+    },
+    // Módulos que não têm documentos de aprovação, mas podem ser selecionados
+    'SIGAFAT': {
+        name: 'Faturamento',
+        documentTypes: [],
+        color: '#0c9abe',
+        icon: 'receipt-outline'
+    },
+    'SIGAFIN': {
+        name: 'Financeiro',
+        documentTypes: [],
+        color: '#d69e2e',
+        icon: 'card-outline'
+    },
+    'SIGARH': {
+        name: 'Recursos Humanos',
+        documentTypes: [],
+        color: '#e53e3e',
+        icon: 'people-outline'
+    }
+};
+
+// Tipos de documentos com seus nomes
 export const DOCUMENT_TYPES: Record<DocumentType, string> = {
+    // Módulo de Compras
     'PC': 'Pedido de Compra',
     'IP': 'Pedido de Compra por Item',
     'AE': 'Autorização de Entrega',
     'SC': 'Solicitação de Compra',
-    'MD': 'Medição de Contrato',
-    'IM': 'Medição de Contrato por Item',
-    'CT': 'Contrato',
+    // Módulo de Contratos
+    'CT': 'Contratos',
+    'MD': 'Medição de Contratos',
+    'IM': 'Medição de Contratos por Item',
+    // Módulo de Estoque
     'SA': 'Solicitação ao Armazém'
+};
+
+// Mapeamento de documentos para módulos
+export const DOCUMENT_TO_MODULE_MAP: Record<DocumentType, string> = {
+    'PC': 'SIGACOM',
+    'IP': 'SIGACOM',
+    'AE': 'SIGACOM',
+    'SC': 'SIGACOM',
+    'CT': 'SIGAGCT',
+    'MD': 'SIGAGCT',
+    'IM': 'SIGAGCT',
+    'SA': 'SIGAEST'
 };
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
     '02': 'Pendente',
     '03': 'Aprovado',
     '06': 'Reprovado'
+};
+
+// Utilitários para módulos
+export const getDocumentTypesForModule = (moduleCode: string): DocumentType[] => {
+    return MODULE_DOCUMENT_TYPES[moduleCode]?.documentTypes || [];
+};
+
+export const getModuleInfo = (moduleCode: string) => {
+    return MODULE_DOCUMENT_TYPES[moduleCode] || {
+        name: 'Módulo Desconhecido',
+        documentTypes: [],
+        color: '#6c757d',
+        icon: 'help-outline'
+    };
+};
+
+export const hasDocumentsForApproval = (moduleCode: string): boolean => {
+    const documentTypes = getDocumentTypesForModule(moduleCode);
+    return documentTypes.length > 0;
+};
+
+export const getDocumentModule = (documentType: DocumentType): string => {
+    return DOCUMENT_TO_MODULE_MAP[documentType];
+};
+
+export const getModuleColor = (moduleCode: string): string => {
+    return getModuleInfo(moduleCode).color;
+};
+
+export const getModuleIcon = (moduleCode: string): string => {
+    return getModuleInfo(moduleCode).icon;
 };
 
 // Utilitários para formatação
@@ -112,13 +218,16 @@ export const getStatusColor = (status: DocumentStatus): string => {
 
 export const getDocumentTypeIcon = (type: DocumentType): string => {
     switch (type) {
+        // Módulo de Compras
         case 'PC': return 'document-text';
         case 'IP': return 'list';
         case 'AE': return 'checkmark-circle';
         case 'SC': return 'add-circle';
+        // Módulo de Contratos
+        case 'CT': return 'contract';
         case 'MD': return 'calculator';
         case 'IM': return 'bar-chart';
-        case 'CT': return 'contract';
+        // Módulo de Estoque
         case 'SA': return 'cube';
         default: return 'document';
     }

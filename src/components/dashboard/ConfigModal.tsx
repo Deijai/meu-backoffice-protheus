@@ -9,10 +9,16 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { useAuthStore } from '../../store/authStore';
 import { useDashboardConfigStore } from '../../store/dashboardConfigStore';
 import { useThemeStore } from '../../store/themeStore';
 import type { DocumentType } from '../../types/approvals';
-import { DOCUMENT_TYPES, getDocumentTypeIcon } from '../../types/approvals';
+import {
+    DOCUMENT_TYPES,
+    getDocumentTypeIcon,
+    getModuleInfo,
+    hasDocumentsForApproval
+} from '../../types/approvals';
 
 interface ConfigModalProps {
     visible: boolean;
@@ -33,7 +39,6 @@ const CardOption: React.FC<CardOptionProps> = ({
     const { theme } = useThemeStore();
     const icon = getDocumentTypeIcon(documentType);
 
-    // Estilos locais para o CardOption
     const cardOptionStyles = StyleSheet.create({
         container: {
             borderRadius: 12,
@@ -108,11 +113,14 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     onClose
 }) => {
     const { theme } = useThemeStore();
+    const { selectedModule } = useAuthStore();
     const {
         enabledCards,
         toggleCard,
         resetToDefault,
-        isCardEnabled
+        isCardEnabled,
+        getAvailableCards,
+        getCurrentModuleCode
     } = useDashboardConfigStore();
 
     const [localEnabledCards, setLocalEnabledCards] = useState<DocumentType[]>(enabledCards);
@@ -120,6 +128,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     useEffect(() => {
         setLocalEnabledCards(enabledCards);
     }, [enabledCards]);
+
+    const moduleCode = getCurrentModuleCode();
+    const moduleInfo = moduleCode ? getModuleInfo(moduleCode) : null;
+    const availableCards = getAvailableCards();
+    const hasDocuments = moduleCode ? hasDocumentsForApproval(moduleCode) : false;
 
     const handleToggleCard = (cardType: DocumentType) => {
         const newCards = localEnabledCards.includes(cardType)
@@ -131,7 +144,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 
     const handleSave = async () => {
         // Aplica as mudanças
-        for (const cardType of Object.keys(DOCUMENT_TYPES) as DocumentType[]) {
+        for (const cardType of availableCards) {
             const shouldBeEnabled = localEnabledCards.includes(cardType);
             const isCurrentlyEnabled = isCardEnabled(cardType);
 
@@ -145,12 +158,47 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 
     const handleReset = async () => {
         await resetToDefault();
-        setLocalEnabledCards(['PC', 'IP', 'AE', 'SC']);
+        setLocalEnabledCards(availableCards);
     };
 
-    const availableCards: DocumentType[] = ['PC', 'IP', 'AE', 'SC', 'MD', 'IM', 'CT', 'SA'];
+    const renderNoDocumentsMessage = () => (
+        <View style={styles.noDocumentsContainer}>
+            <Ionicons
+                name="information-circle-outline"
+                size={64}
+                color={theme.colors.textSecondary}
+            />
+            <Text style={[styles.noDocumentsTitle, { color: theme.colors.text }]}>
+                Módulo sem Documentos de Aprovação
+            </Text>
+            <Text style={[styles.noDocumentsText, { color: theme.colors.textSecondary }]}>
+                O módulo {moduleInfo?.name} não possui documentos que necessitem de aprovação.
+                {'\n\n'}
+                Para acessar documentos de aprovação, selecione um dos seguintes módulos:
+                {'\n'}• Compras (SIGACOM)
+                {'\n'}• Contratos (SIGAGCT)
+                {'\n'}• Estoque (SIGAEST)
+            </Text>
+        </View>
+    );
 
-    const styles = createStyles(theme);
+    const renderNoModuleMessage = () => (
+        <View style={styles.noDocumentsContainer}>
+            <Ionicons
+                name="warning-outline"
+                size={64}
+                color={theme.colors.textSecondary}
+            />
+            <Text style={[styles.noDocumentsTitle, { color: theme.colors.text }]}>
+                Nenhum Módulo Selecionado
+            </Text>
+            <Text style={[styles.noDocumentsText, { color: theme.colors.textSecondary }]}>
+                Selecione um módulo primeiro para configurar o dashboard.
+            </Text>
+        </View>
+    );
+
+    const styles = createStyles(theme, moduleInfo?.color);
 
     return (
         <Modal
@@ -168,79 +216,128 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
 
                     <Text style={styles.title}>Configurar Cards</Text>
 
-                    <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-                        <Text style={styles.resetText}>Padrão</Text>
-                    </TouchableOpacity>
+                    {hasDocuments && (
+                        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
+                            <Text style={styles.resetText}>Padrão</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Conteúdo */}
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>
-                            Selecione os cards que deseja exibir na tela inicial
-                        </Text>
-                        <Text style={styles.sectionSubtitle}>
-                            Você pode personalizar quais tipos de documento aparecerão no seu dashboard
-                        </Text>
-                    </View>
+                    {!moduleCode ? (
+                        renderNoModuleMessage()
+                    ) : !hasDocuments ? (
+                        renderNoDocumentsMessage()
+                    ) : (
+                        <>
+                            {/* Info do módulo atual */}
+                            <View style={styles.section}>
+                                <View style={styles.moduleHeader}>
+                                    <Ionicons
+                                        name={moduleInfo!.icon as any}
+                                        size={24}
+                                        color={moduleInfo!.color}
+                                    />
+                                    <View style={styles.moduleHeaderText}>
+                                        <Text style={styles.sectionTitle}>
+                                            {moduleInfo!.name}
+                                        </Text>
+                                        <Text style={styles.moduleCode}>
+                                            {moduleCode}
+                                        </Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Selecione os cards que deseja exibir na tela inicial para o módulo {moduleInfo!.name}.
+                                    Você pode personalizar quais tipos de documento aparecerão no seu dashboard.
+                                </Text>
+                            </View>
 
-                    <View style={styles.cardsContainer}>
-                        {availableCards.map(cardType => (
-                            <CardOption
-                                key={cardType}
-                                documentType={cardType}
-                                isEnabled={localEnabledCards.includes(cardType)}
-                                onToggle={() => handleToggleCard(cardType)}
-                            />
-                        ))}
-                    </View>
+                            {/* Cards do módulo */}
+                            <View style={styles.cardsContainer}>
+                                {availableCards.map(cardType => (
+                                    <CardOption
+                                        key={cardType}
+                                        documentType={cardType}
+                                        isEnabled={localEnabledCards.includes(cardType)}
+                                        onToggle={() => handleToggleCard(cardType)}
+                                    />
+                                ))}
+                            </View>
 
-                    {/* Informações adicionais */}
-                    <View style={styles.infoSection}>
-                        <View style={styles.infoItem}>
-                            <Ionicons name="information-circle" size={20} color={theme.colors.primary} />
-                            <Text style={styles.infoText}>
-                                Cards desabilitados não aparecerão na tela inicial, mas você ainda poderá
-                                acessar esses documentos pela página de aprovações.
-                            </Text>
-                        </View>
+                            {/* Informações adicionais */}
+                            <View style={styles.infoSection}>
+                                <View style={styles.infoItem}>
+                                    <Ionicons name="information-circle" size={20} color={theme.colors.primary} />
+                                    <Text style={styles.infoText}>
+                                        Cards desabilitados não aparecerão na tela inicial, mas você ainda poderá
+                                        acessar esses documentos pela página de aprovações.
+                                    </Text>
+                                </View>
 
-                        <View style={styles.infoItem}>
-                            <Ionicons name="refresh" size={20} color={theme.colors.primary} />
-                            <Text style={styles.infoText}>
-                                Use "Padrão" para restaurar a configuração original com os
-                                cards mais utilizados.
-                            </Text>
-                        </View>
-                    </View>
+                                <View style={styles.infoItem}>
+                                    <Ionicons name="refresh" size={20} color={theme.colors.primary} />
+                                    <Text style={styles.infoText}>
+                                        Use "Padrão" para restaurar a configuração original com todos os
+                                        cards do módulo {moduleInfo!.name}.
+                                    </Text>
+                                </View>
+
+                                <View style={styles.infoItem}>
+                                    <Ionicons name="layers" size={20} color={theme.colors.primary} />
+                                    <Text style={styles.infoText}>
+                                        A configuração é salva individualmente para cada módulo. Se você trocar
+                                        de módulo, as configurações de cards serão específicas para cada um.
+                                    </Text>
+                                </View>
+                            </View>
+                        </>
+                    )}
                 </ScrollView>
 
                 {/* Footer com ações */}
-                <View style={styles.footer}>
-                    <TouchableOpacity
-                        style={[styles.button, styles.cancelButton]}
-                        onPress={onClose}
-                    >
-                        <Text style={[styles.buttonText, { color: theme.colors.text }]}>
-                            Cancelar
-                        </Text>
-                    </TouchableOpacity>
+                {hasDocuments && (
+                    <View style={styles.footer}>
+                        <TouchableOpacity
+                            style={[styles.button, styles.cancelButton]}
+                            onPress={onClose}
+                        >
+                            <Text style={[styles.buttonText, { color: theme.colors.text }]}>
+                                Cancelar
+                            </Text>
+                        </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={[styles.button, styles.saveButton, { backgroundColor: theme.colors.primary }]}
-                        onPress={handleSave}
-                    >
-                        <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
-                            Salvar Configuração
-                        </Text>
-                    </TouchableOpacity>
-                </View>
+                        <TouchableOpacity
+                            style={[styles.button, styles.saveButton, { backgroundColor: theme.colors.primary }]}
+                            onPress={handleSave}
+                        >
+                            <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
+                                Salvar Configuração
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* Footer simples para módulos sem documentos */}
+                {!hasDocuments && (
+                    <View style={styles.simpleFooter}>
+                        <TouchableOpacity
+                            style={[styles.button, { backgroundColor: theme.colors.primary }]}
+                            onPress={onClose}
+                        >
+                            <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
+                                Fechar
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
         </Modal>
     );
 };
 
-const createStyles = (theme: any) => StyleSheet.create({
+const createStyles = (theme: any, moduleColor?: string) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: theme.colors.background,
@@ -286,11 +383,28 @@ const createStyles = (theme: any) => StyleSheet.create({
         paddingBottom: 12,
     },
 
+    moduleHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+
+    moduleHeaderText: {
+        marginLeft: 12,
+        flex: 1,
+    },
+
     sectionTitle: {
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: '600',
         color: theme.colors.text,
-        marginBottom: 8,
+        marginBottom: 4,
+    },
+
+    moduleCode: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: theme.colors.textSecondary,
     },
 
     sectionSubtitle: {
@@ -302,6 +416,28 @@ const createStyles = (theme: any) => StyleSheet.create({
     cardsContainer: {
         paddingHorizontal: 20,
         gap: 12,
+    },
+
+    noDocumentsContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 40,
+        paddingVertical: 80,
+    },
+
+    noDocumentsTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+
+    noDocumentsText: {
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 22,
     },
 
     infoSection: {
@@ -329,6 +465,13 @@ const createStyles = (theme: any) => StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
         gap: 12,
+    },
+
+    simpleFooter: {
+        padding: 20,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: theme.colors.border,
     },
 
     button: {
