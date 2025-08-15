@@ -1,20 +1,31 @@
-// app/(auth)/login.tsx - COM ÍCONE DE ENGRENAGEM NO HEADER - CORRIGIDO
+// app/(auth)/login.tsx - COM SISTEMA DE TRADUÇÃO IMPLEMENTADO
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, ImageBackground, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Componentes
 import { SafeArea } from '../../src/components/layout/SafeArea';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
+import { LanguageSelector } from '../../src/components/ui/LanguageSelector';
 import { LoadingSpinner } from '../../src/components/ui/LoadingSpinner';
+
+// Hooks
 import { useBiometric } from '../../src/hooks/useBiometric';
+import { useAuthTexts, useToastMessages, useTranslation, useValidationMessages } from '../../src/hooks/useTranslation';
+
+// Services e Stores
 import { authService } from '../../src/services/api/authService';
 import { httpService } from '../../src/services/api/httpService';
 import { useAuthStore } from '../../src/store/authStore';
 import { useConfigStore } from '../../src/store/configStore';
+import { useI18nStore } from '../../src/store/i18nStore';
 import { useThemeStore } from '../../src/store/themeStore';
 import { useToastStore } from '../../src/store/toastStore';
+
+// Styles
 import { Colors } from '../../src/styles/colors';
 
 export default function LoginScreen() {
@@ -22,7 +33,15 @@ export default function LoginScreen() {
     const { login } = useAuthStore();
     const { canProceedToLogin } = useConfigStore();
     const { showSuccess, showError, showInfo, visible, message, type, hideToast } = useToastStore();
+    const { initializeLanguage, isInitialized: isI18nInitialized } = useI18nStore();
     const insets = useSafeAreaInsets();
+
+    // Hooks de tradução
+    const { t, currentLanguage, getBiometricText } = useTranslation();
+    const validation = useValidationMessages();
+    const toastMessages = useToastMessages();
+    const authTexts = useAuthTexts();
+
     const {
         authenticate,
         isAvailable: biometricAvailable,
@@ -46,20 +65,28 @@ export default function LoginScreen() {
     const [showAutoLoginOptions, setShowAutoLoginOptions] = useState(false);
     const [autoLoginUser, setAutoLoginUser] = useState<any>(null);
 
-    // Verificar se há usuário para auto login na montagem
+    // Inicializar sistema de idiomas e verificar auto login
     useEffect(() => {
-        checkForAutoLogin();
+        const initializeApp = async () => {
+            // Inicializar sistema de idiomas primeiro
+            if (!isI18nInitialized) {
+                await initializeLanguage();
+            }
 
-        // Verificar se a configuração REST está OK
-        if (!canProceedToLogin()) {
-            showError('❌ Configuração REST não encontrada. Redirecionando...');
-            setTimeout(() => {
-                router.replace('/(auth)/setup?fromError=true');
-            }, 2000);
-        }
-    }, []);
+            // Depois verificar auto login
+            await checkForAutoLogin();
 
-    // ATUALIZAR o método checkForAutoLogin() na LoginScreen para lidar com refresh token expirado
+            // Verificar se a configuração REST está OK
+            if (!canProceedToLogin()) {
+                showError(toastMessages.configurationError());
+                setTimeout(() => {
+                    router.replace('/(auth)/setup?fromError=true');
+                }, 2000);
+            }
+        };
+
+        initializeApp();
+    }, [isI18nInitialized]);
 
     const checkForAutoLogin = async () => {
         try {
@@ -79,12 +106,10 @@ export default function LoginScreen() {
 
                 setShowAutoLoginOptions(true);
 
-                // *** VERIFICAR SE PRECISA DE LOGIN MANUAL ***
+                // Verificar se precisa de login manual
                 if (autoUser.needsManualLogin) {
                     console.log('⚠️ Usuário precisa de login manual - refresh token expirado');
-                    showInfo('⚠️ Sua sessão expirou. Confirme sua senha para continuar.');
-
-                    // Não fazer auto login, apenas mostrar dados preenchidos
+                    showInfo(toastMessages.sessionExpired());
                     return;
                 }
 
@@ -101,20 +126,18 @@ export default function LoginScreen() {
         }
     };
 
-    // *** MELHORAR o método handleAutoLogin para tratar refresh expirado ***
     const handleAutoLogin = async (user: any) => {
         if (!user || !user.password) {
             console.log('❌ Dados insuficientes para auto login');
-            showError('❌ Dados de login incompletos');
+            showError(validation.invalidCredentials());
             return;
         }
 
         console.log('🔄 === INICIANDO AUTO LOGIN ===');
         setIsLoading(true);
-        showInfo('🔄 Fazendo login automático...');
+        showInfo(t('common.authenticating'));
 
         try {
-            // Usar os dados salvos para fazer novo login
             const authUser = await authService.signIn({
                 username: user.username,
                 password: user.password,
@@ -129,7 +152,7 @@ export default function LoginScreen() {
             };
 
             login(storeUser);
-            showSuccess('✅ Login automático realizado!');
+            showSuccess(toastMessages.loginSuccess());
             console.log('✅ Auto login bem-sucedido');
 
             setTimeout(() => {
@@ -139,12 +162,11 @@ export default function LoginScreen() {
         } catch (error: any) {
             console.error('❌ Erro no auto login:', error);
 
-            // Verificar se é erro de servidor REST
             const isServerError = isServerRelatedError(error);
 
             if (isServerError) {
                 console.log('🔧 Erro de servidor no auto login - Redirecionando para configuração REST');
-                showError('❌ Problema de conexão detectado. Redirecionando para configuração...');
+                showError(toastMessages.redirectingToSetup());
 
                 setTimeout(() => {
                     router.replace('/(auth)/setup?fromError=true');
@@ -153,22 +175,12 @@ export default function LoginScreen() {
                 return;
             }
 
-            // Tratar erro de credenciais ou refresh token expirado
-            let errorMessage = error.message || 'Erro no login automático';
-            if (!errorMessage.startsWith('❌')) {
-                errorMessage = `❌ ${errorMessage}`;
-            }
-
-            // Se erro indica sessão expirada, mostrar mensagem específica
+            let errorMessage = error.message || t('validation.networkError');
             if (errorMessage.includes('Sessão expirada') || errorMessage.includes('invalid_grant')) {
-                showError('⚠️ Sua sessão expirou. Por favor, confirme sua senha.');
-
-                // Manter dados preenchidos para login manual
+                showError(toastMessages.sessionExpired());
                 setShowAutoLoginOptions(true);
             } else {
-                showError(`${errorMessage}. Tente fazer login manualmente.`);
-
-                // Limpar dados se erro não for de sessão expirada
+                showError(toastMessages.loginError(errorMessage));
                 setShowAutoLoginOptions(false);
                 setAutoLoginUser(null);
             }
@@ -177,21 +189,11 @@ export default function LoginScreen() {
         }
     };
 
-
-
-    /**
-     * Detecta se o erro é relacionado ao servidor REST e requer reconfiguração
-     */
     const isServerRelatedError = (error: any): boolean => {
-        // Verificar códigos de erro de rede/conectividade
         if (error.code) {
             const networkErrorCodes = [
-                'ECONNREFUSED',  // Conexão recusada
-                'ECONNABORTED',  // Timeout
-                'ENOTFOUND',     // Servidor não encontrado
-                'ENETUNREACH',   // Rede inacessível
-                'ETIMEDOUT',     // Timeout de conexão
-                'NETWORK_ERROR', // Erro de rede genérico
+                'ECONNREFUSED', 'ECONNABORTED', 'ENOTFOUND',
+                'ENETUNREACH', 'ETIMEDOUT', 'NETWORK_ERROR',
             ];
 
             if (networkErrorCodes.includes(error.code)) {
@@ -200,19 +202,11 @@ export default function LoginScreen() {
             }
         }
 
-        // Verificar mensagens de erro relacionadas ao servidor
         const errorMessage = (error.message || '').toLowerCase();
         const serverErrorMessages = [
-            'não foi possível conectar',
-            'servidor não responde',
-            'timeout na conexão',
-            'conexão recusada',
-            'servidor não encontrado',
-            'erro de conexão',
-            'network error',
-            'failed to fetch',
-            'servidor demorou',
-            'não acessível',
+            'não foi possível conectar', 'servidor não responde', 'timeout na conexão',
+            'conexão recusada', 'servidor não encontrado', 'erro de conexão',
+            'network error', 'failed to fetch', 'servidor demorou', 'não acessível',
         ];
 
         if (serverErrorMessages.some(msg => errorMessage.includes(msg))) {
@@ -220,18 +214,9 @@ export default function LoginScreen() {
             return true;
         }
 
-        // Verificar se tem response com status de erro de servidor
         if (error.response) {
             const status = error.response.status;
-
-            // Status codes que podem indicar problema de configuração
-            const serverStatusCodes = [
-                0,   // Sem conexão
-                502, // Bad Gateway
-                503, // Service Unavailable
-                504, // Gateway Timeout
-                // Note: 401 e 400 são erros de credenciais, não de servidor
-            ];
+            const serverStatusCodes = [0, 502, 503, 504];
 
             if (serverStatusCodes.includes(status)) {
                 console.log('🔧 Status de erro de servidor:', status);
@@ -239,7 +224,6 @@ export default function LoginScreen() {
             }
         }
 
-        // Se erro não tem resposta e não é de credenciais, pode ser servidor
         if (!error.response && !errorMessage.includes('senha') && !errorMessage.includes('usuário')) {
             console.log('🔧 Erro sem resposta, possivelmente servidor');
             return true;
@@ -252,14 +236,12 @@ export default function LoginScreen() {
     const validateForm = (): boolean => {
         const errors: Record<string, string> = {};
 
-        // Validar username
         if (!formData.username.trim()) {
-            errors.username = 'Nome de usuário é obrigatório';
+            errors.username = validation.usernameRequired();
         }
 
-        // Validar password  
         if (!formData.password.trim()) {
-            errors.password = 'Senha é obrigatória';
+            errors.password = validation.passwordRequired();
         }
 
         setValidationErrors(errors);
@@ -270,12 +252,12 @@ export default function LoginScreen() {
         console.log('🔄 === INICIANDO PROCESSO DE LOGIN ===');
 
         if (!validateForm()) {
-            showError('❌ Por favor, corrija os erros no formulário');
+            showError(t('validation.required', { field: 'formulário' }));
             return;
         }
 
         if (!canProceedToLogin()) {
-            showError('❌ Configuração REST não encontrada');
+            showError(validation.configNotFound());
             router.replace('/(auth)/setup?fromError=true');
             return;
         }
@@ -285,23 +267,20 @@ export default function LoginScreen() {
         try {
             console.log('👤 Tentando login com:', formData.username);
 
-            // Atualizar URL base do httpService
             httpService.updateBaseURL();
 
-            // 1. Verificar segurança do servidor primeiro
-            showInfo('🔒 Verificando segurança do servidor...');
+            showInfo(toastMessages.checkingSecurity());
             const isSecure = await authService.checkSecurity();
 
             if (!isSecure) {
                 console.log('❌ Servidor não seguro');
-                showError('❌ Servidor não está seguro. Verifique as configurações.');
+                showError(validation.serverError());
                 return;
             }
 
             console.log('✅ Servidor seguro confirmado');
-            showInfo('✅ Servidor seguro. Autenticando...');
+            showInfo(toastMessages.serverSecure());
 
-            // 2. Realizar o login
             const authUser = await authService.signIn({
                 username: formData.username,
                 password: formData.password,
@@ -310,7 +289,6 @@ export default function LoginScreen() {
 
             console.log('✅ Login OAuth2 bem-sucedido:', authUser.username);
 
-            // 3. Converter AuthUser para User do store
             const storeUser = {
                 id: authUser.username,
                 username: authUser.username,
@@ -318,32 +296,26 @@ export default function LoginScreen() {
                 email: '',
             };
 
-            // 4. Salvar no store
             login(storeUser);
 
-            // 5. Configurar biometria se solicitado
             if (options.enableBiometric && biometricAvailable && isEnrolled) {
                 try {
-                    showInfo('🔒 Configurando biometria...');
+                    showInfo(t('biometric.authenticate', { biometricType: getBiometricText(getBiometricTypeName()) }));
                     const biometricSuccess = await authenticate();
                     if (biometricSuccess) {
-                        showSuccess('✅ Biometria configurada com sucesso!');
+                        showSuccess(toastMessages.biometricConfigured());
                         console.log('✅ Biometria configurada');
                     } else {
                         console.log('⚠️ Usuário cancelou biometria');
-                        // Não mostra erro, só aviso
                     }
                 } catch (biometricError) {
                     console.warn('⚠️ Erro ao configurar biometria:', biometricError);
-                    // Não bloqueia o login por erro de biometria
                 }
             }
 
-            // 6. Sucesso final
-            showSuccess('🎉 Login realizado com sucesso!');
+            showSuccess(toastMessages.loginSuccess());
             console.log('🎉 Login completamente finalizado');
 
-            // Aguardar para mostrar sucesso
             setTimeout(() => {
                 router.navigate('/(app)/branch-selection');
             }, 1500);
@@ -351,23 +323,20 @@ export default function LoginScreen() {
         } catch (error: any) {
             console.error('❌ ERRO NO LOGIN:', error);
 
-            // Verificar se é erro de servidor REST que requer reconfiguração
             const isServerError = isServerRelatedError(error);
 
             if (isServerError) {
                 console.log('🔧 Erro de servidor detectado - Redirecionando para configuração REST');
-                showError('❌ Problema de conexão com servidor. Redirecionando para configuração...');
+                showError(toastMessages.redirectingToSetup());
 
-                // Aguardar um pouco para mostrar o erro
                 setTimeout(() => {
                     router.replace('/(auth)/setup?fromError=true');
                 }, 2000);
 
-                return; // Sair da função
+                return;
             }
 
-            // Tratar outros tipos de erro com mensagens específicas
-            let errorMessage = 'Erro na autenticação';
+            let errorMessage = validation.networkError();
 
             if (error.message) {
                 errorMessage = error.message;
@@ -375,13 +344,8 @@ export default function LoginScreen() {
                 errorMessage = error;
             }
 
-            // Remover emoji duplicado se já existe
-            if (!errorMessage.startsWith('❌')) {
-                errorMessage = `❌ ${errorMessage}`;
-            }
-
             console.log('📤 Mostrando erro para usuário:', errorMessage);
-            showError(errorMessage);
+            showError(toastMessages.loginError(errorMessage));
 
         } finally {
             setIsLoading(false);
@@ -389,38 +353,37 @@ export default function LoginScreen() {
         }
     };
 
-
     const handleBiometricLogin = async () => {
         if (!biometricAvailable || !isEnrolled) {
-            showError('❌ Autenticação biométrica não disponível');
+            showError(validation.biometricNotAvailable());
             return;
         }
 
         if (!autoLoginUser) {
-            showError('❌ Nenhum usuário salvo para autenticação biométrica');
+            showError(validation.biometricNotAvailable());
             return;
         }
 
         try {
-            showInfo(`🔒 Autentique-se com ${getBiometricTypeName()}...`);
+            const biometricType = getBiometricText(getBiometricTypeName());
+            showInfo(t('biometric.authenticate', { biometricType }));
             const biometricSuccess = await authenticate();
 
             if (biometricSuccess) {
                 await handleAutoLogin(autoLoginUser);
             } else {
-                showError('❌ Falha na autenticação biométrica');
+                showError(validation.biometricFailed());
             }
         } catch (error) {
             console.error('❌ Erro na biometria:', error);
 
-            // Se erro for de servidor, redirecionar para setup
             if (isServerRelatedError(error)) {
-                showError('❌ Problema de conexão. Redirecionando para configuração...');
+                showError(toastMessages.redirectingToSetup());
                 setTimeout(() => {
                     router.replace('/(auth)/setup?fromError=true');
                 }, 2000);
             } else {
-                showError('❌ Erro na autenticação biométrica');
+                showError(validation.biometricFailed());
             }
         }
     };
@@ -428,7 +391,6 @@ export default function LoginScreen() {
     const updateFormData = (field: keyof typeof formData, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
 
-        // Limpar erro do campo quando usuário digitar
         if (validationErrors[field]) {
             setValidationErrors(prev => ({ ...prev, [field]: '' }));
         }
@@ -438,6 +400,17 @@ export default function LoginScreen() {
         return formData.username.trim() && formData.password.trim();
     };
 
+    // Aguardar inicialização do i18n
+    if (!isI18nInitialized) {
+        return (
+            <SafeArea>
+                <View style={styles.loadingContainer}>
+                    <LoadingSpinner text="Carregando..." />
+                </View>
+            </SafeArea>
+        );
+    }
+
     return (
         <SafeArea>
             <ImageBackground
@@ -445,38 +418,38 @@ export default function LoginScreen() {
                 style={[styles.backgroundImage]}
                 resizeMode="cover"
             >
-                {/* Overlay para melhor legibilidade */}
-                <View style={[
-                    styles.overlay,
-                    {
-                        backgroundColor: 'transparent'
-                    }
-                ]} />
+                <View style={[styles.overlay, { backgroundColor: 'transparent' }]} />
 
                 <View style={[styles.container, { backgroundColor: 'transparent' }]}>
-                    {/* Loading Overlay */}
                     {isLoading && (
                         <LoadingSpinner
                             overlay
-                            text="Autenticando..."
+                            text={t('common.authenticating')}
                             transparent
                         />
                     )}
 
-                    {/* ⚙️ ÍCONE DE CONFIGURAÇÕES NO HEADER */}
+                    {/* Ícone de configurações */}
                     <TouchableOpacity
                         onPress={() => router.push('/(auth)/setup')}
                         style={[
                             styles.settingsButton,
                             {
                                 top: insets.top + 16,
-                                backgroundColor: theme.colors.background === '#ffffff' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(45, 55, 72, 0.9)'
+                                backgroundColor: theme.colors.background === '#ffffff'
+                                    ? 'rgba(255, 255, 255, 0.9)'
+                                    : 'rgba(45, 55, 72, 0.9)'
                             }
                         ]}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                         <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
                     </TouchableOpacity>
+
+                    {/* Seletor de idioma */}
+                    <View style={[styles.languageSelectorContainer, { top: insets.top + 16 }]}>
+                        <LanguageSelector size="sm" />
+                    </View>
 
                     <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                         {/* Header/Logo */}
@@ -489,10 +462,10 @@ export default function LoginScreen() {
                                 />
                             </View>
                             <Text style={[styles.appTitle, { color: theme.colors.text }]}>
-                                Meu Backoffice
+                                {authTexts.login.title()}
                             </Text>
                             <Text style={[styles.appSubtitle, { color: theme.colors.textSecondary }]}>
-                                Protheus
+                                {authTexts.login.subtitle()}
                             </Text>
                         </View>
 
@@ -517,14 +490,14 @@ export default function LoginScreen() {
                                             {autoLoginUser.username}
                                         </Text>
                                         <Text style={[styles.autoLoginStatus, { color: Colors.primary }]}>
-                                            🔐 Login salvo
+                                            🔐 {authTexts.login.savedLogin()}
                                         </Text>
                                     </View>
                                 </View>
 
                                 {biometricAvailable && isEnrolled && (
                                     <Button
-                                        title={`Entrar com ${getBiometricTypeName()}`}
+                                        title={authTexts.login.enterWith(getBiometricTypeName())}
                                         variant="outline"
                                         size="sm"
                                         onPress={handleBiometricLogin}
@@ -540,7 +513,7 @@ export default function LoginScreen() {
                             <Input
                                 value={formData.username}
                                 onChangeText={(value) => updateFormData('username', value)}
-                                placeholder="Nome de usuário"
+                                placeholder={authTexts.login.usernamePlaceholder()}
                                 leftIcon="person-outline"
                                 autoCapitalize="none"
                                 autoCorrect={false}
@@ -551,7 +524,7 @@ export default function LoginScreen() {
                             <Input
                                 value={formData.password}
                                 onChangeText={(value) => updateFormData('password', value)}
-                                placeholder="Senha"
+                                placeholder={authTexts.login.passwordPlaceholder()}
                                 leftIcon="lock-closed-outline"
                                 secureTextEntry
                                 error={validationErrors.password}
@@ -565,7 +538,7 @@ export default function LoginScreen() {
                                 <View style={styles.optionLeft}>
                                     <Ionicons name="save-outline" size={20} color={theme.colors.textSecondary} />
                                     <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
-                                        Manter conectado
+                                        {authTexts.login.keepConnected()}
                                     </Text>
                                 </View>
                                 <Switch
@@ -581,7 +554,7 @@ export default function LoginScreen() {
                                     <View style={styles.optionLeft}>
                                         <Ionicons name="finger-print-outline" size={20} color={theme.colors.textSecondary} />
                                         <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
-                                            Habilitar {getBiometricTypeName()}
+                                            {authTexts.login.enableBiometric(getBiometricTypeName())}
                                         </Text>
                                     </View>
                                     <Switch
@@ -597,7 +570,7 @@ export default function LoginScreen() {
                         {/* Login Button */}
                         <View style={styles.loginSection}>
                             <Button
-                                title="Entrar"
+                                title={authTexts.login.loginButton()}
                                 onPress={handleLogin}
                                 disabled={!isFormValid() || isLoading}
                                 style={styles.loginButton}
@@ -613,7 +586,7 @@ export default function LoginScreen() {
                                 >
                                     <Ionicons name="bug-outline" size={16} color={theme.colors.textSecondary} />
                                     <Text style={[styles.debugText, { color: theme.colors.textSecondary }]}>
-                                        Debug Mode
+                                        {authTexts.login.debugMode()}
                                     </Text>
                                 </TouchableOpacity>
                             </View>
@@ -622,7 +595,7 @@ export default function LoginScreen() {
                         {/* Footer */}
                         <View style={styles.footer}>
                             <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
-                                Meu Backoffice Protheus v1.0.0
+                                {authTexts.login.appVersion('1.0.0')}
                             </Text>
                         </View>
                     </ScrollView>
@@ -633,6 +606,12 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+    },
     backgroundImage: {
         flex: 1,
         width: '100%',
@@ -650,10 +629,9 @@ const styles = StyleSheet.create({
         flex: 1,
         zIndex: 2,
     },
-    // ⚙️ ESTILO DO ÍCONE DE CONFIGURAÇÕES
     settingsButton: {
         position: 'absolute',
-        right: 24,
+        right: 70, // Deixar espaço para o seletor de idioma
         width: 44,
         height: 44,
         borderRadius: 22,
@@ -666,6 +644,11 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 4,
     },
+    languageSelectorContainer: {
+        position: 'absolute',
+        right: 16,
+        zIndex: 10,
+    },
     content: {
         flex: 1,
     },
@@ -675,8 +658,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         minHeight: '100%',
     },
-
-    // Header/Logo Section
     header: {
         alignItems: 'center',
         marginBottom: 32,
@@ -701,8 +682,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '500',
     },
-
-    // Auto Login Card
     autoLoginCard: {
         padding: 20,
         marginBottom: 24,
@@ -748,8 +727,6 @@ const styles = StyleSheet.create({
     biometricButton: {
         alignSelf: 'flex-start',
     },
-
-    // Form Section
     formSection: {
         marginBottom: 24,
         gap: 16,
@@ -757,8 +734,6 @@ const styles = StyleSheet.create({
     input: {
         backgroundColor: 'transparent',
     },
-
-    // Options Section
     optionsSection: {
         marginBottom: 32,
         gap: 16,
@@ -780,8 +755,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '500',
     },
-
-    // Login Section
     loginSection: {
         marginBottom: 24,
     },
@@ -794,8 +767,6 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 8,
     },
-
-    // Debug Section
     debugSection: {
         alignItems: 'center',
         marginBottom: 24,
@@ -811,8 +782,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
-
-    // Footer
     footer: {
         alignItems: 'center',
         paddingTop: 24,
