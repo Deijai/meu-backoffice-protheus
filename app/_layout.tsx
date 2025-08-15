@@ -1,11 +1,12 @@
-// app/_layout.tsx - ATUALIZADO COM PERSISTÊNCIA E i18n
+// app/_layout.tsx - CORRIGIDO COM INICIALIZAÇÃO i18next
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
-// IMPORTANTE: Importar configuração do i18n ANTES de qualquer componente que use traduções
-import '../src/i18n/resources';
+// CORRIGIDO: Importar configuração do i18n (não apenas os resources)
+// Este import inicializa o i18next
+import '../src/i18n';
 
 import { PersistenceProvider } from '../src/components/providers/PersistenceProvider';
 import { Toast } from '../src/components/ui/Toast';
@@ -41,7 +42,11 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-    const { initializeLanguage, isInitialized: isI18nInitialized } = useI18nStore();
+    const {
+        initializeLanguage,
+        isInitialized: isI18nInitialized,
+        isI18nextReady
+    } = useI18nStore();
 
     const [loaded] = useFonts({
         PoppinsRegular: require("../assets/fonts/Poppins-Regular.ttf"),
@@ -50,18 +55,26 @@ export default function RootLayout() {
 
     useEffect(() => {
         // Inicializar sistema de idiomas
-        initializeLanguage();
+        const init = async () => {
+            try {
+                await initializeLanguage();
+            } catch (error) {
+                console.error('❌ Erro crítico na inicialização do i18n:', error);
+            }
+        };
+
+        init();
     }, []);
 
     useEffect(() => {
         // Só esconder splash quando fontes E i18n estiverem carregados
-        if (loaded && isI18nInitialized) {
+        if (loaded && isI18nInitialized && isI18nextReady) {
             SplashScreen.hideAsync();
         }
-    }, [loaded, isI18nInitialized]);
+    }, [loaded, isI18nInitialized, isI18nextReady]);
 
     // Aguardar carregamento de fontes E i18n
-    if (!loaded || !isI18nInitialized) {
+    if (!loaded || !isI18nInitialized || !isI18nextReady) {
         return null;
     }
 

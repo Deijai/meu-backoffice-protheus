@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocales } from 'expo-localization';
 import { create } from 'zustand';
+import { changeI18nLanguage, initI18n, isI18nReady } from '../i18n';
 import { Language, LanguageCode } from '../types/i18n';
 
 // Idiomas suportados
@@ -31,6 +32,7 @@ interface I18nState {
     currentLanguage: LanguageCode;
     isInitialized: boolean;
     isChanging: boolean;
+    isI18nextReady: boolean;
 
     // Ações
     initializeLanguage: () => Promise<void>;
@@ -49,6 +51,7 @@ export const useI18nStore = create<I18nState>((set, get) => ({
     currentLanguage: DEFAULT_LANGUAGE,
     isInitialized: false,
     isChanging: false,
+    isI18nextReady: false,
 
     // Inicializar o idioma da aplicação
     initializeLanguage: async () => {
@@ -73,9 +76,13 @@ export const useI18nStore = create<I18nState>((set, get) => ({
                 await AsyncStorage.setItem(STORAGE_KEY, targetLanguage);
             }
 
+            // Inicializar i18next com o idioma detectado
+            await initI18n(targetLanguage);
+
             set({
                 currentLanguage: targetLanguage,
                 isInitialized: true,
+                isI18nextReady: true,
             });
 
             console.log(`✅ Sistema de idiomas inicializado: ${targetLanguage}`);
@@ -83,10 +90,21 @@ export const useI18nStore = create<I18nState>((set, get) => ({
             console.error('❌ Erro ao inicializar idiomas:', error);
 
             // Fallback para idioma padrão
-            set({
-                currentLanguage: DEFAULT_LANGUAGE,
-                isInitialized: true,
-            });
+            try {
+                await initI18n(DEFAULT_LANGUAGE);
+                set({
+                    currentLanguage: DEFAULT_LANGUAGE,
+                    isInitialized: true,
+                    isI18nextReady: true,
+                });
+            } catch (fallbackError) {
+                console.error('❌ Erro crítico ao inicializar i18next:', fallbackError);
+                set({
+                    currentLanguage: DEFAULT_LANGUAGE,
+                    isInitialized: true,
+                    isI18nextReady: false,
+                });
+            }
         }
     },
 
@@ -109,6 +127,15 @@ export const useI18nStore = create<I18nState>((set, get) => ({
                 throw new Error(`Idioma não suportado: ${language}`);
             }
 
+            // Verificar se i18next está pronto
+            if (!isI18nReady()) {
+                console.warn('⚠️ i18next não está inicializado, tentando inicializar...');
+                await initI18n(language);
+            } else {
+                // Alterar idioma no i18next
+                await changeI18nLanguage(language);
+            }
+
             // Salvar no AsyncStorage
             await AsyncStorage.setItem(STORAGE_KEY, language);
 
@@ -116,6 +143,7 @@ export const useI18nStore = create<I18nState>((set, get) => ({
             set({
                 currentLanguage: language,
                 isChanging: false,
+                isI18nextReady: true,
             });
 
             console.log(`✅ Idioma alterado para: ${language}`);

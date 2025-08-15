@@ -1,5 +1,4 @@
 // src/hooks/useTranslation.ts
-import { changeLanguage } from 'i18next';
 import { useTranslation as useI18nextTranslation } from 'react-i18next';
 import { useI18nStore } from '../store/i18nStore';
 import {
@@ -18,7 +17,8 @@ export const useTranslation = () => {
         getSupportedLanguages,
         getLanguageByCode,
         isChanging,
-        isInitialized
+        isInitialized,
+        isI18nextReady
     } = useI18nStore();
 
     // Função de tradução tipada
@@ -27,21 +27,30 @@ export const useTranslation = () => {
         options?: InterpolationValues
     ): string => {
         try {
-            return i18nT(key, options) as string;
+            // Se i18next não estiver pronto, retornar a chave
+            if (!isI18nextReady) {
+                console.warn(`🌐 i18next não está pronto, retornando chave: ${key}`);
+                return key;
+            }
+
+            const result = i18nT(key, options) as string;
+
+            // Se a tradução retornou a própria chave, significa que não foi encontrada
+            if (result === key) {
+                console.warn(`🌐 Tradução não encontrada para a chave: ${key}`);
+            }
+
+            return result;
         } catch (error) {
             console.warn(`🌐 Erro na tradução da chave: ${key}`, error);
             return key; // Retorna a chave como fallback
         }
     };
 
-    // Função para alterar idioma
+    // Função para alterar idioma (simplificada)
     const setCurrentLanguage = async (language: LanguageCode): Promise<void> => {
         try {
-            // Atualizar no store (persiste no AsyncStorage)
             await setLanguage(language);
-
-            // Atualizar no i18next
-            await changeLanguage(language);
         } catch (error) {
             console.error('❌ Erro ao alterar idioma:', error);
             throw error;
@@ -87,6 +96,7 @@ export const useTranslation = () => {
         setLanguage: setCurrentLanguage,
         isChangingLanguage: isChanging,
         isI18nInitialized: isInitialized,
+        isI18nextReady,
 
         // Utilitários
         getBiometricText,
@@ -158,5 +168,46 @@ export const useAuthTexts = () => {
             debugMode: () => t('auth.login.debugMode'),
             appVersion: (version: string) => t('auth.login.appVersion', { version }),
         },
+        setup: {
+            title: () => t('auth.setup.title'),
+            subtitle: () => t('auth.setup.subtitle'),
+            protocol: () => t('auth.setup.protocol'),
+            address: () => t('auth.setup.address'),
+            port: () => t('auth.setup.port'),
+            endpoint: () => t('auth.setup.endpoint'),
+            environment: () => t('auth.setup.environment'),
+            testConnection: () => t('auth.setup.testConnection'),
+            backToLogin: () => t('auth.setup.backToLogin'),
+            connectionSuccess: () => t('auth.setup.connectionSuccess'),
+            protocolSelection: () => t('auth.setup.protocolSelection'),
+            optional: () => t('auth.setup.optional'),
+            required: () => t('auth.setup.required'),
+        },
+    };
+};
+
+// Hook para textos comuns
+export const useCommonTexts = () => {
+    const { t } = useTranslation();
+
+    return {
+        loading: () => t('common.loading'),
+        authenticating: () => t('common.authenticating'),
+        connecting: () => t('common.connecting'),
+        error: () => t('common.error'),
+        success: () => t('common.success'),
+        warning: () => t('common.warning'),
+        info: () => t('common.info'),
+        cancel: () => t('common.cancel'),
+        confirm: () => t('common.confirm'),
+        retry: () => t('common.retry'),
+        close: () => t('common.close'),
+        save: () => t('common.save'),
+        back: () => t('common.back'),
+        next: () => t('common.next'),
+        finish: () => t('common.finish'),
+        yes: () => t('common.yes'),
+        no: () => t('common.no'),
+        ok: () => t('common.ok'),
     };
 };

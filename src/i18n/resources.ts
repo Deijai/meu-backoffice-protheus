@@ -1,6 +1,9 @@
 // src/i18n/resources.ts
 import { LanguageCode, TranslationResources } from '../types/i18n';
 
+// IMPORTANTE: Este arquivo deve ser importado DEPOIS da configuração do i18next
+// O import no _layout.tsx deve ser alterado para '../src/i18n' (não '../src/i18n/resources')
+
 export const resources: Record<LanguageCode, { translation: TranslationResources }> = {
     pt: {
         translation: {
@@ -63,7 +66,7 @@ export const resources: Record<LanguageCode, { translation: TranslationResources
                 info: 'Informação',
                 cancel: 'Cancelar',
                 confirm: 'Confirmar',
-                retry: 'Tentar novamente',
+                retry: 'Tentar Novamente',
                 close: 'Fechar',
                 save: 'Salvar',
                 back: 'Voltar',
@@ -77,22 +80,22 @@ export const resources: Record<LanguageCode, { translation: TranslationResources
                 faceId: 'Face ID',
                 touchId: 'Touch ID',
                 fingerprint: 'Impressão Digital',
-                authenticate: 'Autentique-se com {{biometricType}}...',
+                authenticate: 'Autentique com {{biometricType}}...',
                 authenticationFailed: 'Falha na autenticação biométrica',
                 authenticationCancelled: 'Autenticação cancelada pelo usuário',
-                notEnrolled: 'Nenhuma biometria configurada no dispositivo',
+                notEnrolled: 'Nenhuma biometria cadastrada no dispositivo',
                 notAvailable: 'Autenticação biométrica não disponível',
-                configureSuccess: 'Biometria configurada com sucesso!',
+                configureSuccess: 'Autenticação biométrica configurada com sucesso!',
             },
             toast: {
                 loginSuccess: '🎉 Login realizado com sucesso!',
                 loginError: '❌ {{message}}',
                 connectionSuccess: '✅ Conexão estabelecida com sucesso!',
-                connectionError: '❌ Erro na conexão: {{message}}',
+                connectionError: '❌ Erro de conexão: {{message}}',
                 configurationError: '❌ Configuração REST não encontrada. Redirecionando...',
                 sessionExpired: '⚠️ Sua sessão expirou. Confirme sua senha para continuar.',
                 redirectingToSetup: '❌ Problema de conexão detectado. Redirecionando para configuração...',
-                biometricConfigured: '✅ Biometria configurada com sucesso!',
+                biometricConfigured: '✅ Autenticação biométrica configurada com sucesso!',
                 checkingSecurity: '🔒 Verificando segurança do servidor...',
                 serverSecure: '✅ Servidor seguro. Autenticando...',
             },
@@ -120,13 +123,13 @@ export const resources: Record<LanguageCode, { translation: TranslationResources
                     password: 'Password',
                     usernamePlaceholder: 'Enter your username',
                     passwordPlaceholder: 'Enter your password',
-                    loginButton: 'Sign In',
+                    loginButton: 'Login',
                     keepConnected: 'Keep connected',
                     enableBiometric: 'Enable {{biometricType}}',
-                    loginWith: 'Sign in with {{biometricType}}',
+                    loginWith: 'Login with {{biometricType}}',
                     autoLoginCard: {
                         savedLogin: 'Saved login',
-                        enterWith: 'Sign in with {{biometricType}}',
+                        enterWith: 'Login with {{biometricType}}',
                     },
                     debugMode: 'Debug Mode',
                     appVersion: 'My Backoffice Protheus v{{version}}',
@@ -152,7 +155,7 @@ export const resources: Record<LanguageCode, { translation: TranslationResources
                 usernameRequired: 'Username is required',
                 passwordRequired: 'Password is required',
                 emailInvalid: 'Invalid email',
-                passwordMinLength: 'Password must be at least {{min}} characters',
+                passwordMinLength: 'Password must have at least {{min}} characters',
                 networkError: 'Network connection error',
                 serverError: 'Internal server error',
                 invalidCredentials: 'Invalid username or password',
