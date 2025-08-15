@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { DocumentCard } from '../../../src/components/approvals/DocumentCard';
 import { FilterModal } from '../../../src/components/approvals/FilterModal';
+import { MultiBranchFilter } from '../../../src/components/approvals/MultiBranchFilter';
 import { SafeArea } from '../../../src/components/layout/SafeArea';
 import { useApprovalsStore } from '../../../src/store/approvalsStore';
 import { useThemeStore } from '../../../src/store/themeStore';
@@ -64,6 +65,7 @@ export default function ApprovalsScreen() {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
     // Refs
     const flatListRef = useRef<FlatList>(null);
@@ -222,6 +224,39 @@ export default function ApprovalsScreen() {
         );
     };
 
+    // Função para lidar com mudanças nas filiais selecionadas
+    const handleBranchesChange = (branches: string[]) => {
+        setSelectedBranches(branches);
+
+        // Atualiza os filtros automaticamente
+        const newFilters = {
+            ...filters,
+            documentBranch: branches.length > 0 ? branches : undefined
+        };
+        setFilters(newFilters);
+    };
+
+    // Função para limpar todos os filtros incluindo filiais
+    const handleClearAllFilters = () => {
+        clearFilters();
+        setSelectedBranches([]);
+    };
+
+    // Função para contar filtros ativos
+    const getActiveFiltersCount = () => {
+        let count = 0;
+        if (filters.searchkey) count++;
+        if (filters.initDate || filters.endDate) count++;
+        if (filters.documentBranch && filters.documentBranch.length > 0) count++;
+        if (filters.documentTypes && filters.documentTypes.length > 0) count++;
+        if (selectedBranches.length > 0) count++;
+        return count;
+    };
+
+    const hasActiveFilters = () => {
+        return getActiveFiltersCount() > 0;
+    };
+
     const renderDocument = useCallback(({ item }: { item: Document }) => (
         <DocumentCard
             document={item}
@@ -243,7 +278,7 @@ export default function ApprovalsScreen() {
                 Nenhum documento encontrado
             </Text>
             <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
-                {filters && Object.keys(filters).length > 0
+                {hasActiveFilters()
                     ? 'Tente ajustar os filtros de busca'
                     : 'Não há documentos para este status'
                 }
@@ -267,22 +302,38 @@ export default function ApprovalsScreen() {
     const styles = createStyles(theme);
 
     return (
-        <SafeArea style={styles.container}>
+        <SafeArea>
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.title}>Aprovações</Text>
 
                 <View style={styles.headerActions}>
+                    {/* Filtro de multi-filial */}
+                    <MultiBranchFilter
+                        selectedBranches={selectedBranches}
+                        onBranchesChange={handleBranchesChange}
+                    />
+
                     {/* Botão de filtro */}
                     <TouchableOpacity
-                        style={styles.headerButton}
+                        style={[
+                            styles.headerButton,
+                            hasActiveFilters() && styles.headerButtonActive
+                        ]}
                         onPress={() => setIsFilterModalVisible(true)}
                     >
                         <Ionicons
                             name="filter"
                             size={20}
-                            color={Object.keys(filters).length > 0 ? theme.colors.primary : theme.colors.text}
+                            color={hasActiveFilters() ? '#FFFFFF' : theme.colors.text}
                         />
+                        {hasActiveFilters() && (
+                            <View style={styles.filterBadge}>
+                                <Text style={styles.filterBadgeText}>
+                                    {getActiveFiltersCount()}
+                                </Text>
+                            </View>
+                        )}
                     </TouchableOpacity>
 
                     {/* Botão de ordenação */}
@@ -323,6 +374,8 @@ export default function ApprovalsScreen() {
                 />
             </View>
 
+
+
             {/* Modo de seleção header */}
             {isSelectionMode && (
                 <View style={styles.selectionHeader}>
@@ -337,13 +390,13 @@ export default function ApprovalsScreen() {
                 </View>
             )}
 
-            {/* Filtros ativos */}
+            {/* Filtros ativos (mantido para compatibilidade) */}
             {Object.keys(filters).length > 0 && (
                 <View style={styles.activeFilters}>
                     <Text style={[styles.filtersText, { color: theme.colors.textSecondary }]}>
                         Filtros ativos
                     </Text>
-                    <TouchableOpacity onPress={clearFilters}>
+                    <TouchableOpacity onPress={handleClearAllFilters}>
                         <Text style={[styles.clearFiltersText, { color: theme.colors.primary }]}>
                             Limpar
                         </Text>
@@ -453,12 +506,37 @@ const createStyles = (theme: any) => StyleSheet.create({
 
     headerActions: {
         flexDirection: 'row',
+        alignItems: 'center',
         gap: 8,
     },
 
     headerButton: {
         padding: 8,
         borderRadius: 8,
+        position: 'relative',
+    },
+
+    headerButtonActive: {
+        backgroundColor: theme.colors.primary,
+    },
+
+    filterBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        backgroundColor: theme.colors.error,
+        borderRadius: 8,
+        minWidth: 16,
+        height: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+    },
+
+    filterBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        fontWeight: '600',
     },
 
     segmentContainer: {
@@ -469,6 +547,8 @@ const createStyles = (theme: any) => StyleSheet.create({
     segmentedControl: {
         height: 36,
     },
+
+
 
     selectionHeader: {
         flexDirection: 'row',
